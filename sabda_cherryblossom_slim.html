@@ -362,6 +362,7 @@ guideGroup.add(makeLabel('RIGHT (5008×1200)', W_RIGHT/2, H_WALL - 25));
 guideGroup.add(makeLabel('BACK (1920×1200)',  W_RIGHT + W_BACK/2, H_WALL - 25));
 
 let showGuides = true;
+compScene.add(guideGroup);
 document.addEventListener('keydown', e => {
   if (e.key === 'd' || e.key === 'D') {
     showGuides = !showGuides;
@@ -475,7 +476,7 @@ const skySphereMat = new THREE.ShaderMaterial({
 });
 const skySphere = new THREE.Mesh(skySphereGeo, skySphereMat);
 contentScene.add(skySphere);
-contentScene.background = null;
+contentScene.background = new THREE.Color(0xd0a0b0);  // pink fallback until sky loads
 contentScene.environment = skyTexA;
 
 // ── LIGHTING ──
@@ -605,9 +606,13 @@ b64Blob('groundpetaldata').then(url=>{if(!url){checkReady();return;}
 }).catch(e=>{console.error('Ground b64:',e);checkReady();});
 
 // ── FALLBACK GROUND ──
-contentScene.add(Object.assign(new THREE.Mesh(new THREE.CircleGeometry(80,64),
-  new THREE.MeshStandardMaterial({color:0x6a5045,roughness:0.95,metalness:0})),
-  {rotation:{x:-Math.PI/2,y:0,z:0},position:{x:0,y:-0.2,z:0}}));
+{
+  const gnd = new THREE.Mesh(new THREE.CircleGeometry(80, 64),
+    new THREE.MeshStandardMaterial({color: 0x6a5045, roughness: 0.95, metalness: 0}));
+  gnd.rotation.x = -Math.PI / 2;
+  gnd.position.y = -0.2;
+  contentScene.add(gnd);
+}
 
 // ═══════════════════════════════════════════════════════
 // ANIMATION
