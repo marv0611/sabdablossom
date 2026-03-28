@@ -68,11 +68,6 @@ const uB = (2 * ROOM_W + ROOM_L) / PERIM;
 const EYE_H = 1.6;
 const DURATION = 1800; // 30 minutes
 
-// ── SCENE CONSTANTS ──
-const PETAL_COUNT = 500;
-const DUST_COUNT = 300;
-const CLOUD_LAYERS = 3;
-
 // ═══════════════════════════════════════════════════════
 // RENDERER
 // ═══════════════════════════════════════════════════════
@@ -412,15 +407,13 @@ function b64T(id, mime) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-function b64Blob(id) {
+async function b64Blob(id) {
   const raw = document.getElementById(id)?.textContent?.trim();
   if (!raw || raw === 'ASSET_PLACEHOLDER') return null;
-  // Chunked decode — handles large b64 strings without hanging
-  const binStr = atob(raw);
-  const len = binStr.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i);
-  const blob = new Blob([bytes], { type: 'model/gltf-binary' });
+  // Use fetch with data URI — browser decodes b64 natively, non-blocking
+  const resp = await fetch('data:application/octet-stream;base64,' + raw);
+  const buf = await resp.arrayBuffer();
+  const blob = new Blob([buf], { type: 'model/gltf-binary' });
   return URL.createObjectURL(blob);
 }
 
@@ -678,7 +671,7 @@ const TREE_PLACEMENTS = [
 ];
 
 {
-  const url = b64Blob('treedata');
+  b64Blob('treedata').then(url => {
   if (url) gltfLoader.load(url, (gltf) => {
     URL.revokeObjectURL(url);
     const baseModel = gltf.scene;
@@ -699,6 +692,8 @@ const TREE_PLACEMENTS = [
     console.log(`Trees: ${TREE_PLACEMENTS.length} instances, height ${modelHeight.toFixed(1)} → 10m`);
     checkReady();
   }, undefined, (err) => { console.error('Tree load failed:', err); checkReady(); });
+  else checkReady();
+  }).catch(err => { console.error('Tree b64 decode failed:', err); checkReady(); });
 }
 
 // ── ANIMATED FALLING PETALS (rigged GLB, 12.5s loop) ──
@@ -718,7 +713,7 @@ const ANIM_PETAL_PLACEMENTS = [
 ];
 
 {
-  const url = b64Blob('animpetaldata');
+  b64Blob('animpetaldata').then(url => {
   if (url) gltfLoader.load(url, (gltf) => {
     URL.revokeObjectURL(url);
     const baseModel = gltf.scene;
@@ -745,13 +740,15 @@ const ANIM_PETAL_PLACEMENTS = [
     console.log(`Animated petals: ${ANIM_PETAL_PLACEMENTS.length} instances, ${clipDuration.toFixed(1)}s loop`);
     checkReady();
   }, undefined, (err) => { console.error('Animated petals load failed:', err); checkReady(); });
+  else checkReady();
+  }).catch(err => { console.error('Anim petal b64 decode failed:', err); checkReady(); });
 }
 
 // ── GROUND PETAL CARPET ──
 // Load the ground petal scatter GLB, tile it to cover the visible area
 const groundPetalInstances = [];
 {
-  const url = b64Blob('groundpetaldata');
+  b64Blob('groundpetaldata').then(url => {
   if (url) gltfLoader.load(url, (gltf) => {
     URL.revokeObjectURL(url);
     const baseModel = gltf.scene;
@@ -782,6 +779,8 @@ const groundPetalInstances = [];
     console.log(`Ground petals: ${groundPetalInstances.length} tiles, spacing ${spacing.toFixed(1)}m`);
     checkReady();
   }, undefined, (err) => { console.error('Ground petals load failed:', err); checkReady(); });
+  else checkReady();
+  }).catch(err => { console.error('Ground petal b64 decode failed:', err); checkReady(); });
 }
 
 // ── FALLBACK GROUND (in case ground GLB doesn't cover enough) ──
