@@ -415,8 +415,12 @@ function b64T(id, mime) {
 function b64Blob(id) {
   const raw = document.getElementById(id)?.textContent?.trim();
   if (!raw || raw === 'ASSET_PLACEHOLDER') return null;
-  const bin = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
-  const blob = new Blob([bin], { type: 'model/gltf-binary' });
+  // Chunked decode — handles large b64 strings without hanging
+  const binStr = atob(raw);
+  const len = binStr.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binStr.charCodeAt(i);
+  const blob = new Blob([bytes], { type: 'model/gltf-binary' });
   return URL.createObjectURL(blob);
 }
 
@@ -653,6 +657,14 @@ function checkReady() {
     console.log('SABDA Cherry Blossom: All assets loaded');
   }
 }
+// Safety timeout — never stuck on loading screen forever
+setTimeout(() => {
+  if (!window.SABDA_READY) {
+    console.warn('SABDA: Loading timeout — starting with ' + readyCount + '/' + TOTAL_ASSETS + ' assets');
+    document.getElementById('loading').classList.add('done');
+    window.SABDA_READY = true;
+  }
+}, 30000);
 
 // ── CHERRY BLOSSOM TREES ──
 // Grove layout — trees at 22-40m distance, creating depth like reference image
@@ -686,7 +698,7 @@ const TREE_PLACEMENTS = [
     }
     console.log(`Trees: ${TREE_PLACEMENTS.length} instances, height ${modelHeight.toFixed(1)} → 10m`);
     checkReady();
-  });
+  }, undefined, (err) => { console.error('Tree load failed:', err); checkReady(); });
 }
 
 // ── ANIMATED FALLING PETALS (rigged GLB, 12.5s loop) ──
@@ -732,7 +744,7 @@ const ANIM_PETAL_PLACEMENTS = [
     }
     console.log(`Animated petals: ${ANIM_PETAL_PLACEMENTS.length} instances, ${clipDuration.toFixed(1)}s loop`);
     checkReady();
-  });
+  }, undefined, (err) => { console.error('Animated petals load failed:', err); checkReady(); });
 }
 
 // ── GROUND PETAL CARPET ──
@@ -769,7 +781,7 @@ const groundPetalInstances = [];
     }
     console.log(`Ground petals: ${groundPetalInstances.length} tiles, spacing ${spacing.toFixed(1)}m`);
     checkReady();
-  });
+  }, undefined, (err) => { console.error('Ground petals load failed:', err); checkReady(); });
 }
 
 // ── FALLBACK GROUND (in case ground GLB doesn't cover enough) ──
