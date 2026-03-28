@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SABDA — Cherry Blossom</title>
+<style>
+*{margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000}
+canvas{position:absolute;top:0;left:0}
+#loading{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;
+  align-items:center;justify-content:center;background:#1a0a10;z-index:100;
+  font-family:'Georgia',serif;color:#e8b4c8;font-size:1.2rem;letter-spacing:0.2em;
+  transition:opacity 2s ease-out}
+#loading.done{opacity:0;pointer-events:none}
+#fps{position:fixed;top:8px;left:8px;z-index:50;font-family:monospace;
+  color:rgba(255,255,255,0.5);font-size:11px;background:rgba(0,0,0,0.4);
+  padding:4px 8px;border-radius:4px;pointer-events:none}
+#projLabel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:60;
+  font-family:monospace;color:#e8b4c8;font-size:20px;background:rgba(0,0,0,0.6);
+  padding:12px 24px;border-radius:8px;pointer-events:none;opacity:0;transition:opacity 0.5s}
+</style>
+</head>
+<body>
+<div id="loading">S A B D A — Cherry Blossom</div>
+<div id="fps"></div>
+<div id="projLabel"></div>
+
+<!-- SCENE ASSETS -->
+<script id="skydata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="treedata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="petaldata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="animpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="groundpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
+
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.162.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.162.0/examples/jsm/"
+}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SABDA Cherry Blossom — 360° Immersive Projection
+   Soft pink, falling petals, late afternoon warmth
+   Room: 15.00m × 5.63m × 3.23m — 4 walls, Watchout playback
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// ── WALL DIMENSIONS (from Unity Spout) ──
+const W_LEFT   = 5008, H_WALL = 1200;
+const W_RIGHT  = 5008;
+const W_FRONT  = 1920;
+const W_BACK   = 1920;
+const OUT_W = W_LEFT + W_FRONT;   // 6928
+const OUT_H = H_WALL * 2;         // 2400
+
+// ── SABDA ROOM GEOMETRY (for azimuth mapping) ──
+const ROOM_L = 15.00;   // long walls (Left/Right)
+const ROOM_W = 5.63;    // short walls (Front/Back)
+const PERIM = 2 * ROOM_L + 2 * ROOM_W;  // 41.26m
+
+const uF = ROOM_W / PERIM;
+const uR = (ROOM_W + ROOM_L) / PERIM;
+const uB = (2 * ROOM_W + ROOM_L) / PERIM;
+
+// ── SHARED CONSTANTS ──
+const EYE_H = 1.6;
+const DURATION = 1800; // 30 minutes
+
+// ── SCENE CONSTANTS ──
+const PETAL_COUNT = 500;
+const DUST_COUNT = 300;
+const CLOUD_LAYERS = 3;
+
+// ═══════════════════════════════════════════════════════
+// RENDERER
+// ═══════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({
+  antialias: false,
+  powerPreference: 'high-performance',
+});
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setPixelRatio(1);
+renderer.setSize(OUT_W, OUT_H);
+document.body.appendChild(renderer.domElement);
+
+// ═══════════════════════════════════════════════════════
+// CONTENT SCENE
+// ═══════════════════════════════════════════════════════
+const contentScene = new THREE.Scene();
+
+const CUBE_SIZE = 4096;
+const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_SIZE, {
+  generateMipmaps: true,
+  minFilter: THREE.LinearMipmapLinearFilter,
+  type: THREE.UnsignedByteType,
+});
+const cubeCamera = new THREE.CubeCamera(0.05, 500, cubeRT);
+cubeCamera.position.set(0, EYE_H, 0);
+contentScene.add(cubeCamera);
+
+// ═══════════════════════════════════════════════════════
+// 4 EQUIRECT WALL RENDER TARGETS
+// ═══════════════════════════════════════════════════════
+const VFOV_RAD = 62.5 * Math.PI / 180.0;
+const ELEV_OFFSET = 3.0 * Math.PI / 180.0;
+
+function makeWallRT(w, h) {
+  return new THREE.WebGLRenderTarget(w, h, {
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    colorSpace: THREE.SRGBColorSpace,
+  });
+}
+
+const rtFront = makeWallRT(W_FRONT, H_WALL);
+const rtBack  = makeWallRT(W_BACK, H_WALL);
+const rtLeft  = makeWallRT(W_LEFT, H_WALL);
+const rtRight = makeWallRT(W_RIGHT, H_WALL);
+
+function makeEquirectMat(azStartFrac, azEndFrac) {
+  const azStart = azStartFrac * Math.PI * 2;
+  const azEnd   = azEndFrac * Math.PI * 2;
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      tCube: { value: null },
+      vFovRad: { value: VFOV_RAD },
+      elevOffset: { value: ELEV_OFFSET },
+      azStart: { value: azStart },
+      azRange: { value: azEnd - azStart },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform samplerCube tCube;
+      uniform float vFovRad, elevOffset, azStart, azRange;
+      varying vec2 vUv;
+      float dither(vec2 co) {
+        return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+      }
+      void main() {
+        float azimuth = azStart + vUv.x * azRange;
+        float elevation = (vUv.y - 0.5) * vFovRad + elevOffset;
+        float ce = cos(elevation);
+        vec3 dir = vec3(sin(azimuth) * ce, sin(elevation), -cos(azimuth) * ce);
+        vec4 col = textureCube(tCube, dir);
+
+        // ── PROJECTION OPTIMIZATION (cherry blossom — softer than murmuration) ──
+        // 1. Black floor lift
+        col.rgb = col.rgb * 0.97 + 0.015;
+        // 2. S-curve contrast — gentle for soft dreamy feel
+        vec3 scurve = col.rgb * col.rgb * (3.0 - 2.0 * col.rgb);
+        col.rgb = mix(col.rgb, scurve, 0.65);
+        // 3. Saturation — warm pink emphasis
+        float luma = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+        col.rgb = mix(vec3(luma), col.rgb, 1.25);
+        // 4. Highlight ceiling — soft
+        col.rgb = min(col.rgb, 0.88 + (col.rgb - 0.88) * 0.3);
+        // 5. Vertical edge blend
+        float topBottomFade = smoothstep(0.0, 0.02, vUv.y) * smoothstep(1.0, 0.98, vUv.y);
+        col.rgb *= topBottomFade * 0.05 + 0.95;
+
+        col.rgb += dither(gl_FragCoord.xy) / 255.0;
+        gl_FragColor = col;
+      }
+    `,
+    depthWrite: false, depthTest: false,
+  });
+}
+
+const matFront = makeEquirectMat(0.0, uF);
+const matRight = makeEquirectMat(uF, uR);
+const matBack  = makeEquirectMat(uR, uB);
+const matLeft  = makeEquirectMat(uB, 1.0);
+
+function makeEquirectScene(mat) {
+  const s = new THREE.Scene();
+  s.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  return s;
+}
+const eqScnFront = makeEquirectScene(matFront);
+const eqScnRight = makeEquirectScene(matRight);
+const eqScnBack  = makeEquirectScene(matBack);
+const eqScnLeft  = makeEquirectScene(matLeft);
+const eqCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+// ═══════════════════════════════════════════════════════
+// 3D ROOM VIEWER — press R to toggle
+// SABDA room: 15.00m(L) × 5.63m(W) × 3.23m(H)
+// ═══════════════════════════════════════════════════════
+const ROOM_H = 3.23;
+const roomScene = new THREE.Scene();
+roomScene.background = new THREE.Color(0x1a0a10);
+const roomCamera = new THREE.PerspectiveCamera(75, OUT_W/OUT_H, 0.1, 100);
+roomCamera.position.set(0, EYE_H, 0);
+let roomControls = null;
+
+function makeRoomWallMat(azStartFrac, azEndFrac) {
+  const azStart = azStartFrac * Math.PI * 2;
+  const azEnd   = azEndFrac * Math.PI * 2;
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      tCube: { value: null },
+      vFovRad: { value: VFOV_RAD },
+      elevOffset: { value: ELEV_OFFSET },
+      azStart: { value: azStart },
+      azRange: { value: azEnd - azStart },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform samplerCube tCube;
+      uniform float vFovRad, elevOffset, azStart, azRange;
+      varying vec2 vUv;
+      float dither(vec2 co) {
+        return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+      }
+      void main() {
+        float azimuth = azStart + vUv.x * azRange;
+        float elevation = (vUv.y - 0.5) * vFovRad + elevOffset;
+        float ce = cos(elevation);
+        vec3 dir = vec3(sin(azimuth) * ce, sin(elevation), -cos(azimuth) * ce);
+        vec4 col = textureCube(tCube, dir);
+        col.rgb = col.rgb * 0.96 + 0.02;
+        vec3 scurve = col.rgb * col.rgb * (3.0 - 2.0 * col.rgb);
+        col.rgb = mix(col.rgb, scurve, 0.45);
+        float luma = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+        col.rgb = mix(vec3(luma), col.rgb, 1.25);
+        col.rgb = min(col.rgb, 0.90 + (col.rgb - 0.90) * 0.4);
+        float topBottomFade = smoothstep(0.0, 0.02, vUv.y) * smoothstep(1.0, 0.98, vUv.y);
+        col.rgb *= topBottomFade * 0.05 + 0.95;
+        col.rgb += dither(gl_FragCoord.xy) * 1.5 / 255.0;
+        gl_FragColor = col;
+      }
+    `,
+    side: THREE.FrontSide,
+  });
+}
+
+const matRoomFront = makeRoomWallMat(0.0, uF);
+const matRoomRight = makeRoomWallMat(uF, uR);
+const matRoomBack  = makeRoomWallMat(uR, uB);
+const matRoomLeft  = makeRoomWallMat(uB, 1.0);
+
+const wF = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_H), matRoomFront);
+wF.position.set(0, ROOM_H/2, -ROOM_L/2);
+roomScene.add(wF);
+
+const wR = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_L, ROOM_H), matRoomRight);
+wR.rotation.y = -Math.PI/2;
+wR.position.set(ROOM_W/2, ROOM_H/2, 0);
+roomScene.add(wR);
+
+const wB = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_H), matRoomBack);
+wB.rotation.y = Math.PI;
+wB.position.set(0, ROOM_H/2, ROOM_L/2);
+roomScene.add(wB);
+
+const wL = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_L, ROOM_H), matRoomLeft);
+wL.rotation.y = Math.PI/2;
+wL.position.set(-ROOM_W/2, ROOM_H/2, 0);
+roomScene.add(wL);
+
+const floorMat = new THREE.MeshBasicMaterial({color: 0x2a2a2a});
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_L), floorMat);
+floor.rotation.x = -Math.PI/2;
+roomScene.add(floor);
+
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_L), new THREE.MeshBasicMaterial({color: 0x111111}));
+ceiling.rotation.x = Math.PI/2;
+ceiling.position.y = ROOM_H;
+roomScene.add(ceiling);
+
+roomScene.add(new THREE.HemisphereLight(0xe8b4c8, 0x1a1018, 0.15));
+roomScene.add(new THREE.AmbientLight(0xffffff, 0.1));
+
+let roomMode = false;
+
+const roomRT = new THREE.WebGLRenderTarget(OUT_W, OUT_H, {
+  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+  colorSpace: THREE.SRGBColorSpace,
+});
+const roomBlitScene = new THREE.Scene();
+const roomBlitCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const roomBlitQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.MeshBasicMaterial({ map: roomRT.texture })
+);
+roomBlitScene.add(roomBlitQuad);
+
+// ═══════════════════════════════════════════════════════
+// COMPOSITE SCENE
+// ═══════════════════════════════════════════════════════
+const compScene = new THREE.Scene();
+const compCam = new THREE.OrthographicCamera(0, OUT_W, OUT_H, 0, -1, 1);
+
+function makeQuad(rt, x, y, w, h) {
+  const mat = new THREE.MeshBasicMaterial({ map: rt.texture });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  mesh.position.set(x + w/2, y + h/2, 0);
+  return mesh;
+}
+
+compScene.add(makeQuad(rtLeft,  0,       H_WALL, W_LEFT,  H_WALL));
+compScene.add(makeQuad(rtFront, W_LEFT,  H_WALL, W_FRONT, H_WALL));
+compScene.add(makeQuad(rtRight, 0,       0,      W_RIGHT, H_WALL));
+compScene.add(makeQuad(rtBack,  W_RIGHT, 0,      W_BACK,  H_WALL));
+
+// ── PROJECTOR SIMULATION SCENES ──
+let projMode = 0;
+const STRIP_W = W_LEFT + W_FRONT;
+const STRIP_H = H_WALL;
+
+const projTopScene = new THREE.Scene();
+const projTopCam = new THREE.OrthographicCamera(0, STRIP_W, STRIP_H, 0, -1, 1);
+projTopScene.add(makeQuad(rtLeft,  0,      0, W_LEFT,  H_WALL));
+projTopScene.add(makeQuad(rtFront, W_LEFT, 0, W_FRONT, H_WALL));
+
+const projBotScene = new THREE.Scene();
+const projBotCam = new THREE.OrthographicCamera(0, STRIP_W, STRIP_H, 0, -1, 1);
+projBotScene.add(makeQuad(rtRight, 0,       0, W_RIGHT, H_WALL));
+projBotScene.add(makeQuad(rtBack,  W_RIGHT, 0, W_BACK,  H_WALL));
+
+// ── GUIDE OVERLAYS (toggle with D key) ──
+const guideGroup = new THREE.Group();
+const divGeo = new THREE.PlaneGeometry(OUT_W, 3);
+const divMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const divLine = new THREE.Mesh(divGeo, divMat);
+divLine.position.set(OUT_W/2, H_WALL/2, 0.1);
+guideGroup.add(divLine);
+
+const vdivGeo = new THREE.PlaneGeometry(3, OUT_H);
+const vdivLine = new THREE.Mesh(vdivGeo, divMat);
+vdivLine.position.set(W_LEFT, OUT_H/2, 0.1);
+guideGroup.add(vdivLine);
+
+function makeLabel(text, x, y) {
+  const cvs = document.createElement('canvas');
+  cvs.width = 512; cvs.height = 48;
+  const ctx = cvs.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, 512, 48);
+  ctx.font = 'bold 28px monospace';
+  ctx.fillStyle = '#ff3333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 24);
+  const tex = new THREE.CanvasTexture(cvs);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(280, 30), mat);
+  mesh.position.set(x, y, 0.2);
+  return mesh;
+}
+guideGroup.add(makeLabel('LEFT (5008×1200)',  W_LEFT/2,  OUT_H - 25));
+guideGroup.add(makeLabel('FRONT (1920×1200)', W_LEFT + W_FRONT/2, OUT_H - 25));
+guideGroup.add(makeLabel('RIGHT (5008×1200)', W_RIGHT/2, H_WALL - 25));
+guideGroup.add(makeLabel('BACK (1920×1200)',  W_RIGHT + W_BACK/2, H_WALL - 25));
+
+let showGuides = true;
+document.addEventListener('keydown', e => {
+  if (e.key === 'd' || e.key === 'D') {
+    showGuides = !showGuides;
+    guideGroup.visible = showGuides;
+  }
+  if (e.key === 'p' || e.key === 'P') {
+    projMode = (projMode + 1) % 3;
+    const labels = ['BOTH STRIPS', 'TOP STRIP (Left+Front)', 'BOTTOM STRIP (Right+Back)'];
+    const lbl = document.getElementById('projLabel');
+    if(lbl){ lbl.textContent = labels[projMode]; lbl.style.opacity = 1;
+      clearTimeout(lbl._t); lbl._t = setTimeout(()=>{ lbl.style.opacity = 0; }, 2000); }
+  }
+  if (e.key === 'r' || e.key === 'R') {
+    roomMode = !roomMode;
+    if (roomMode && !roomControls) {
+      import('three/addons/controls/OrbitControls.js').then(mod => {
+        roomControls = new mod.OrbitControls(roomCamera, renderer.domElement);
+        roomControls.target.set(0, EYE_H, -0.01);
+        roomControls.enablePan = false;
+        roomControls.enableZoom = false;
+        roomControls.rotateSpeed = 0.5;
+      });
+    }
+    if (roomControls) roomControls.enabled = roomMode;
+    const lbl = document.getElementById('projLabel');
+    if(lbl){ lbl.textContent = roomMode ? '360° ROOM VIEW (drag to look around)' : 'STRIP VIEW'; lbl.style.opacity = 1;
+      clearTimeout(lbl._t); lbl._t = setTimeout(()=>{ lbl.style.opacity = 0; }, 3000); }
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════
+// SCENE CONTENT — Cherry Blossom
+// ═══════════════════════════════════════════════════════
+
+// ── TEXTURE LOADER ──
+const tl = new THREE.TextureLoader();
+function b64T(id, mime) {
+  const raw = document.getElementById(id)?.textContent?.trim();
+  if (!raw || raw === 'ASSET_PLACEHOLDER') return null;
+  const t = tl.load('data:' + mime + ';base64,' + raw);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function b64Blob(id) {
+  const raw = document.getElementById(id)?.textContent?.trim();
+  if (!raw || raw === 'ASSET_PLACEHOLDER') return null;
+  const bin = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+  const blob = new Blob([bin], { type: 'model/gltf-binary' });
+  return URL.createObjectURL(blob);
+}
+
+// ── SKY ──
+const skyTex = b64T('skydata', 'image/jpeg');
+skyTex.mapping = THREE.EquirectangularReflectionMapping;
+skyTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+skyTex.minFilter = THREE.LinearMipmapLinearFilter;
+skyTex.magFilter = THREE.LinearFilter;
+skyTex.generateMipmaps = true;
+
+const skySphereGeo = new THREE.SphereGeometry(400, 64, 32);
+const skySphereMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tex: { value: skyTex },
+    tintColor: { value: new THREE.Color(1.0, 0.94, 0.96) },
+    uTime: { value: 0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform sampler2D tex;
+    uniform vec3 tintColor;
+    uniform float uTime;
+    varying vec2 vUv;
+    float dither(vec2 co) {
+      return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+    }
+    void main() {
+      vec4 c = texture2D(tex, vUv);
+      vec3 col = c.rgb * tintColor;
+
+      // Gentle saturation — keep natural, avoid neon
+      float luma = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(vec3(luma), col, 1.15);
+
+      // Soft contrast
+      col = (col - 0.5) * 1.05 + 0.5;
+
+      // Cloud brightness lift
+      float skyLuma = dot(col, vec3(0.299, 0.587, 0.114));
+      float liftAmount = smoothstep(0.0, 0.6, skyLuma) * (1.0 - smoothstep(0.6, 0.95, skyLuma));
+      col += liftAmount * 0.15;
+
+      // Subtle warm tint on dark areas
+      float darkCloud = (1.0 - smoothstep(0.0, 0.5, skyLuma)) * 0.10;
+      col.r += darkCloud * 0.8;
+      col.g += darkCloud * 0.3;
+      col.b += darkCloud * 0.4;
+
+      // Mask lower hemisphere — fade to fog colour to hide HDRI ground/buildings
+      float horizonMask = smoothstep(0.35, 0.48, vUv.y);  // vUv.y=0.5 is horizon
+      vec3 fogCol = vec3(0.82, 0.68, 0.72);
+      col = mix(fogCol, col, horizonMask);
+
+      // Gentle breathing
+      float breath = sin(uTime * 0.003) * 0.02;
+      col.r += breath;
+      col.b -= breath * 0.5;
+
+      col = clamp(col, 0.0, 1.0);
+      col += dither(gl_FragCoord.xy) / 255.0;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  side: THREE.BackSide
+});
+const skySphere = new THREE.Mesh(skySphereGeo, skySphereMat);
+contentScene.add(skySphere);
+contentScene.background = null;
+contentScene.environment = skyTex;
+
+// ── LIGHTING — soft late-afternoon warmth (reference: golden light through canopy) ──
+const ambient = new THREE.AmbientLight(0xc89898, 0.45);
+contentScene.add(ambient);
+
+const hemi = new THREE.HemisphereLight(0xffd0b0, 0x3a2030, 0.45);
+contentScene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffe0c0, 0.80);
+sun.position.set(8, 12, -10);
+contentScene.add(sun);
+
+const rim = new THREE.DirectionalLight(0xffb0c0, 0.25);
+rim.position.set(-10, 6, 8);
+contentScene.add(rim);
+
+const fill = new THREE.DirectionalLight(0xc0a0b8, 0.20);
+fill.position.set(0, 4, 12);
+contentScene.add(fill);
+
+// ── FOG — dense pink haze to mask HDRI buildings and create depth ──
+contentScene.fog = new THREE.FogExp2(0xd0a0b0, 0.018);
+
+// ── LOWER CLOUD BANK — thick, low, masks horizon ──
+const CLOUD_LAYERS = 3;
+const cloudMeshes = [];
+for (let li = 0; li < CLOUD_LAYERS; li++) {
+  const cloudGeo = new THREE.PlaneGeometry(900, 900, 1, 1);
+  const cloudMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    uniforms: { uTime: { value: 0 }, uLayer: { value: li } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform float uTime, uLayer;
+      varying vec2 vUv;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y);
+      }
+      float fbm(vec2 p) {
+        float v=0.0, a=0.5;
+        for(int i=0;i<5;i++) { v+=a*noise(p); p*=2.0; a*=0.5; }
+        return v;
+      }
+      void main() {
+        vec2 uv = vUv;
+        float speed = 0.006 + uLayer * 0.002;
+        float n = fbm(uv * (2.5 + uLayer * 0.8) + vec2(uTime * speed + uLayer * 1.7, uTime * speed * 0.4));
+        float dist = length(uv - 0.5) * 2.0;
+        float fade = smoothstep(1.0, 0.3, dist);
+        float alpha = n * fade * (0.25 - uLayer * 0.04);
+        alpha *= smoothstep(0.35, 0.5, n);
+        vec3 col = mix(vec3(0.90, 0.72, 0.78), vec3(0.95, 0.85, 0.75), n * 0.6 + uLayer * 0.2);
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+  });
+  const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+  cloudMesh.rotation.x = -Math.PI / 2;
+  cloudMesh.position.y = -4.0 + li * 1.2;  // lower than before — helps mask horizon
+  contentScene.add(cloudMesh);
+  cloudMeshes.push(cloudMesh);
+}
+
+// ── DUST PARTICLES ──
+const DUST_COUNT = 200;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(DUST_COUNT * 3);
+const dustSizes = new Float32Array(DUST_COUNT);
+const dustSpeeds = new Float32Array(DUST_COUNT * 3);
+const dustPhases = new Float32Array(DUST_COUNT);
+for (let i = 0; i < DUST_COUNT; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = 3 + Math.random() * 12;
+  dustPos[i*3]   = Math.sin(phi) * Math.cos(theta) * r;
+  dustPos[i*3+1] = Math.sin(phi) * Math.sin(theta) * r - 1;
+  dustPos[i*3+2] = Math.cos(phi) * r;
+  dustSizes[i] = 1.5 + Math.random() * 2.5;
+  dustSpeeds[i*3]   = (Math.random() - 0.5) * 0.0003;
+  dustSpeeds[i*3+1] = Math.random() * 0.0002;
+  dustSpeeds[i*3+2] = (Math.random() - 0.5) * 0.0003;
+  dustPhases[i] = Math.random() * Math.PI * 2;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+dustGeo.setAttribute('size', new THREE.BufferAttribute(dustSizes, 1));
+const dustMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  uniforms: {
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(1.0, 0.92, 0.88) },
+    uOpacity: { value: 0.30 },
+  },
+  vertexShader: `
+    attribute float size;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (200.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      gl_FragColor = vec4(uColor, smoothstep(0.5, 0.1, d) * uOpacity);
+    }
+  `,
+});
+contentScene.add(new THREE.Points(dustGeo, dustMat));
+
+// ── GOD RAYS — very subtle golden streaks ──
+const godRayGroup = new THREE.Group();
+for (let i = 0; i < 6; i++) {
+  const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.3;
+  const geo = new THREE.PlaneGeometry(2 + Math.random() * 3, 35 + Math.random() * 20);
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    uniforms: { uOpacity: { value: 0.03 + Math.random() * 0.02 } },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      precision highp float;
+      uniform float uOpacity; varying vec2 vUv;
+      void main() {
+        float fade = smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
+        float center = smoothstep(0.0, 0.5, vUv.x) * smoothstep(1.0, 0.5, vUv.x);
+        gl_FragColor = vec4(1.0, 0.92, 0.80, fade * center * uOpacity);
+      }
+    `,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(Math.cos(angle)*25, 10 + Math.random()*6, Math.sin(angle)*25);
+  mesh.lookAt(0, EYE_H, 0);
+  godRayGroup.add(mesh);
+}
+contentScene.add(godRayGroup);
+
+
+// ═══════════════════════════════════════════════════════
+// GLB LOADING
+// ═══════════════════════════════════════════════════════
+const gltfLoader = new GLTFLoader();
+let readyCount = 0;
+const TOTAL_ASSETS = 3;  // trees, animated petals, ground petals
+function checkReady() {
+  if (++readyCount >= TOTAL_ASSETS) {
+    document.getElementById('loading').classList.add('done');
+    window.SABDA_READY = true;
+    console.log('SABDA Cherry Blossom: All assets loaded');
+  }
+}
+
+// ── CHERRY BLOSSOM TREES ──
+// Grove layout — trees at 22-40m distance, creating depth like reference image
+// 4 instances (not 6) to keep cubemap performance reasonable
+const treeInstances = [];
+const TREE_PLACEMENTS = [
+  { az: 0.4,  dist: 22,  scale: 0.9,  rotY: 0.0  },   // front-right
+  { az: 2.0,  dist: 30,  scale: 1.1,  rotY: 1.5  },   // left-back
+  { az: 3.6,  dist: 25,  scale: 0.85, rotY: 2.8  },   // back
+  { az: 5.0,  dist: 35,  scale: 1.2,  rotY: 0.7  },   // right-far
+];
+
+{
+  const url = b64Blob('treedata');
+  if (url) gltfLoader.load(url, (gltf) => {
+    URL.revokeObjectURL(url);
+    const baseModel = gltf.scene;
+    const box = new THREE.Box3().setFromObject(baseModel);
+    const modelHeight = box.getSize(new THREE.Vector3()).y;
+    const baseScale = 10 / modelHeight;  // target 10m tall (natural cherry blossom)
+
+    for (const pl of TREE_PLACEMENTS) {
+      const tree = baseModel.clone();
+      const s = baseScale * pl.scale;
+      tree.scale.set(s, s, s);
+      tree.position.set(Math.cos(pl.az) * pl.dist, 0, Math.sin(pl.az) * pl.dist);
+      tree.rotation.y = pl.rotY;
+      tree.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
+      contentScene.add(tree);
+      treeInstances.push(tree);
+    }
+    console.log(`Trees: ${TREE_PLACEMENTS.length} instances, height ${modelHeight.toFixed(1)} → 10m`);
+    checkReady();
+  });
+}
+
+// ── ANIMATED FALLING PETALS (rigged GLB, 12.5s loop) ──
+// Clone 10 instances at different positions/phases around the scene
+const animPetalMixers = [];
+const ANIM_PETAL_PLACEMENTS = [
+  { x:  0, y: 6, z:  0, s: 1.2, rotY: 0.0 },   // center above viewer
+  { x:  5, y: 7, z: -4, s: 1.0, rotY: 1.0 },
+  { x: -6, y: 5, z:  3, s: 1.1, rotY: 2.3 },
+  { x:  3, y: 8, z:  6, s: 0.9, rotY: 3.5 },
+  { x: -4, y: 6, z: -5, s: 1.3, rotY: 4.8 },
+  { x:  7, y: 5, z:  2, s: 1.0, rotY: 0.7 },
+  { x: -2, y: 9, z: -7, s: 1.1, rotY: 2.0 },
+  { x:  8, y: 7, z: -6, s: 0.8, rotY: 5.2 },
+  { x: -8, y: 6, z:  7, s: 1.2, rotY: 1.5 },
+  { x:  0, y: 8, z:  8, s: 1.0, rotY: 3.8 },
+];
+
+{
+  const url = b64Blob('animpetaldata');
+  if (url) gltfLoader.load(url, (gltf) => {
+    URL.revokeObjectURL(url);
+    const baseModel = gltf.scene;
+    const baseClip = gltf.animations[0];
+    const clipDuration = baseClip.duration;  // 12.5s
+
+    for (let i = 0; i < ANIM_PETAL_PLACEMENTS.length; i++) {
+      const pl = ANIM_PETAL_PLACEMENTS[i];
+      const clone = SkeletonUtils.clone(baseModel);
+      clone.position.set(pl.x, pl.y, pl.z);
+      clone.scale.setScalar(pl.s);
+      clone.rotation.y = pl.rotY;
+
+      // Each clone gets its own mixer with a time offset for variation
+      const mixer = new THREE.AnimationMixer(clone);
+      const action = mixer.clipAction(baseClip);
+      action.play();
+      // Stagger start times so petals aren't all in sync
+      action.time = (i / ANIM_PETAL_PLACEMENTS.length) * clipDuration;
+
+      contentScene.add(clone);
+      animPetalMixers.push({ mixer, action, data: pl });
+    }
+    console.log(`Animated petals: ${ANIM_PETAL_PLACEMENTS.length} instances, ${clipDuration.toFixed(1)}s loop`);
+    checkReady();
+  });
+}
+
+// ── GROUND PETAL CARPET ──
+// Load the ground petal scatter GLB, tile it to cover the visible area
+const groundPetalInstances = [];
+{
+  const url = b64Blob('groundpetaldata');
+  if (url) gltfLoader.load(url, (gltf) => {
+    URL.revokeObjectURL(url);
+    const baseModel = gltf.scene;
+    const box = new THREE.Box3().setFromObject(baseModel);
+    const size = box.getSize(new THREE.Vector3());
+    console.log(`Ground petal model: ${size.x.toFixed(1)} × ${size.z.toFixed(1)}m`);
+
+    // Scale to cover ground — calculate coverage needed
+    // Place a grid of instances to cover ~60m radius
+    const groundScale = 1.0;  // adjust based on model native size
+    const spacing = Math.max(size.x, size.z) * groundScale * 0.9;  // slight overlap
+
+    const gridRange = 3;  // -3 to +3 = 7×7 grid
+    for (let gx = -gridRange; gx <= gridRange; gx++) {
+      for (let gz = -gridRange; gz <= gridRange; gz++) {
+        // Skip corners (circular coverage, not square)
+        if (gx*gx + gz*gz > gridRange*gridRange + 1) continue;
+        const instance = baseModel.clone();
+        instance.scale.setScalar(groundScale);
+        instance.position.set(gx * spacing, -0.05, gz * spacing);
+        // Random rotation for variety
+        instance.rotation.y = Math.random() * Math.PI * 2;
+        instance.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
+        contentScene.add(instance);
+        groundPetalInstances.push(instance);
+      }
+    }
+    console.log(`Ground petals: ${groundPetalInstances.length} tiles, spacing ${spacing.toFixed(1)}m`);
+    checkReady();
+  });
+}
+
+// ── FALLBACK GROUND (in case ground GLB doesn't cover enough) ──
+{
+  const groundGeo = new THREE.CircleGeometry(60, 64);
+  const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x8a6a60,  // warm earthy brown-pink (petal-covered soil)
+    roughness: 0.95, metalness: 0.0,
+  });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.15;
+  contentScene.add(ground);
+}
+
+
+// ═══════════════════════════════════════════════════════
+// ANIMATION
+// ═══════════════════════════════════════════════════════
+let time = 0;
+const fpsEl = document.getElementById('fps');
+let fpsFrames = 0, fpsLast = performance.now();
+
+// PUPPETEER INTERFACE
+window.SABDA_RENDERER = renderer;
+window.SABDA_WALLS = { left: rtLeft, right: rtRight, front: rtFront, back: rtBack };
+
+window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
+  const dt = (1/30) * (speedMultiplier || 1);
+  time = simTime;
+
+  // ── SKY DRIFT ──
+  skySphere.rotation.y = (time / DURATION) * Math.PI * 2 * 0.5;
+  skySphereMat.uniforms.uTime.value = time;
+
+  // ── CLOUD BANK ──
+  for (const cm of cloudMeshes) cm.material.uniforms.uTime.value = time;
+
+  // ── DUST ──
+  dustMat.uniforms.uTime.value = time;
+  const dPos = dustGeo.attributes.position.array;
+  for (let i = 0; i < DUST_COUNT; i++) {
+    const i3 = i * 3;
+    dPos[i3]   += dustSpeeds[i3]   + Math.sin(time * 0.3 + dustPhases[i]) * 0.0004;
+    dPos[i3+1] += dustSpeeds[i3+1] + Math.sin(time * 0.2 + dustPhases[i] * 1.7) * 0.0002;
+    dPos[i3+2] += dustSpeeds[i3+2] + Math.cos(time * 0.25 + dustPhases[i] * 0.8) * 0.0004;
+    const dx = dPos[i3], dy = dPos[i3+1], dz = dPos[i3+2];
+    if (dx*dx + dy*dy + dz*dz > 25*25 || dy > 15) {
+      const t2 = Math.random() * Math.PI * 2, p2 = Math.acos(2 * Math.random() - 1), r2 = 3 + Math.random() * 10;
+      dPos[i3] = Math.sin(p2) * Math.cos(t2) * r2;
+      dPos[i3+1] = Math.sin(p2) * Math.sin(t2) * r2 - 1;
+      dPos[i3+2] = Math.cos(p2) * r2;
+    }
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+
+  // Dust homing near loop boundary
+  const dustLoopT = time % DURATION;
+  const dustResetBlend = dustLoopT < 20 ? 1 - dustLoopT / 20 : dustLoopT > 1780 ? (dustLoopT - 1780) / 20 : 0;
+  if (dustResetBlend > 0) {
+    for (let i = 0; i < DUST_COUNT; i++) {
+      const i3 = i * 3;
+      const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+      dPos[i3]   += ((Math.abs(seed % 1) - 0.5) * 40 - dPos[i3]) * dustResetBlend * 0.03;
+      dPos[i3+1] += ((Math.abs(Math.sin(seed * 2.3) % 1)) * 12 - dPos[i3+1]) * dustResetBlend * 0.03;
+      dPos[i3+2] += ((Math.abs(Math.sin(seed * 3.7) % 1) - 0.5) * 40 - dPos[i3+2]) * dustResetBlend * 0.03;
+    }
+    dustGeo.attributes.position.needsUpdate = true;
+  }
+
+  // ── BREATHING COLOUR — gentle, natural ──
+  const breathCycle = Math.sin(time * 0.004) * 0.5 + 0.5;
+  skySphereMat.uniforms.tintColor.value.setRGB(
+    0.98 + breathCycle * 0.04,
+    0.92 + breathCycle * 0.04,
+    0.94 - breathCycle * 0.02
+  );
+  sun.intensity = 0.75 + breathCycle * 0.10;
+  ambient.intensity = 0.42 + breathCycle * 0.06;
+
+  // ── ANIMATED PETALS ──
+  for (const ap of animPetalMixers) {
+    ap.mixer.update(dt);
+  }
+
+  // ── GENTLE TREE SWAY ──
+  for (let ti = 0; ti < treeInstances.length; ti++) {
+    treeInstances[ti].rotation.z = Math.sin(time * 0.12 + ti * 2.0) * 0.005;
+    treeInstances[ti].rotation.x = Math.sin(time * 0.10 + ti * 1.3 + 1.0) * 0.003;
+  }
+
+  // ── GOD RAYS ──
+  godRayGroup.children.forEach((ray, i) => {
+    ray.material.uniforms.uOpacity.value = (0.025 + Math.sin(time * 0.06 + i * 1.5) * 0.01) * (0.8 + breathCycle * 0.2);
+  });
+
+  // ── RENDER 4 WALLS ──
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.setRenderTarget(null);
+  cubeCamera.update(renderer, contentScene);
+
+  renderer.toneMapping = THREE.NoToneMapping;
+  const cubeTex = cubeRT.texture;
+  matFront.uniforms.tCube.value = cubeTex;
+  matRight.uniforms.tCube.value = cubeTex;
+  matBack.uniforms.tCube.value = cubeTex;
+  matLeft.uniforms.tCube.value = cubeTex;
+  matRoomFront.uniforms.tCube.value = cubeTex;
+  matRoomRight.uniforms.tCube.value = cubeTex;
+  matRoomBack.uniforms.tCube.value = cubeTex;
+  matRoomLeft.uniforms.tCube.value = cubeTex;
+
+  renderer.setRenderTarget(rtFront); renderer.render(eqScnFront, eqCam);
+  renderer.setRenderTarget(rtRight); renderer.render(eqScnRight, eqCam);
+  renderer.setRenderTarget(rtBack);  renderer.render(eqScnBack, eqCam);
+  renderer.setRenderTarget(rtLeft);  renderer.render(eqScnLeft, eqCam);
+  renderer.setRenderTarget(null);
+};
+
+window.SABDA_STATUS = function(t) {
+  return `breath=${(Math.sin(t * 0.004) * 0.5 + 0.5).toFixed(2)}`;
+};
+
+// ── LIVE PREVIEW ──
+if (!window.__SABDA_PUPPETEER__) {
+  const scrubDiv = document.createElement('div');
+  scrubDiv.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:200;display:flex;align-items:center;gap:20px;background:rgba(0,0,0,0.7);padding:20px 40px;border-radius:12px;font-family:monospace;color:#e8b4c8;font-size:48px;';
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 0; slider.max = 1800; slider.step = 1; slider.value = 0;
+  slider.style.cssText = 'width:3000px;cursor:pointer;height:40px;';
+  const info = document.createElement('span');
+  info.style.cssText = 'min-width:900px;white-space:nowrap;';
+  const playBtn = document.createElement('button');
+  playBtn.textContent = '⏸'; playBtn.style.cssText = 'background:none;border:2px solid #e8b4c8;color:#e8b4c8;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:48px;';
+  scrubDiv.appendChild(playBtn);
+  scrubDiv.appendChild(slider);
+  scrubDiv.appendChild(info);
+  document.body.appendChild(scrubDiv);
+
+  let liveT = 0, playing = true, scrubbing = false, timeScale = 1;
+  let lastFrameTime = performance.now() / 1000;
+  playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸' : '▶'; };
+  slider.oninput = () => { scrubbing = true; liveT = parseFloat(slider.value); };
+  slider.onchange = () => { scrubbing = false; };
+  document.addEventListener('keydown', e => {
+    if (e.key === 't' || e.key === 'T') {
+      timeScale = timeScale === 30 ? 1 : 30;
+      info.style.color = timeScale > 1 ? '#ff6666' : '#e8b4c8';
+    }
+    if (e.key === 'y' || e.key === 'Y') {
+      timeScale = timeScale === 5 ? 1 : 5;
+      info.style.color = timeScale > 1 ? '#ffaa44' : '#e8b4c8';
+    }
+  });
+
+  function liveLoop() {
+    const now = performance.now() / 1000;
+    const realDt = Math.min(now - lastFrameTime, 0.1);
+    lastFrameTime = now;
+    if (playing && !scrubbing) liveT += realDt * timeScale;
+    if (liveT > 1800) liveT = 0;
+    if (!scrubbing) slider.value = liveT;
+
+    const mins = Math.floor(liveT/60), secs = Math.floor(liveT%60);
+    const statusStr = window.SABDA_STATUS ? window.SABDA_STATUS(liveT) : '';
+    info.textContent = `${mins}:${secs.toString().padStart(2,'0')} / 30:00  ${timeScale>1?'⚡'+timeScale+'x  ':''}${statusStr}`;
+
+    window.SABDA_RENDER_FRAME(liveT, timeScale);
+
+    // FPS counter
+    fpsFrames++;
+    const nowMs = performance.now();
+    if (nowMs - fpsLast > 500) {
+      fpsEl.textContent = `${(fpsFrames / ((nowMs - fpsLast)/1000)).toFixed(1)} fps`;
+      fpsFrames = 0; fpsLast = nowMs;
+    }
+
+    renderer.setRenderTarget(null);
+    if (roomMode) {
+      renderer.toneMapping = THREE.NoToneMapping;
+      if (roomControls) roomControls.update();
+      renderer.setRenderTarget(roomRT);
+      renderer.render(roomScene, roomCamera);
+      renderer.setRenderTarget(null);
+      renderer.render(roomBlitScene, roomBlitCam);
+    } else if (projMode === 0) {
+      renderer.render(compScene, compCam);
+    } else if (projMode === 1) {
+      renderer.render(projTopScene, projTopCam);
+    } else {
+      renderer.render(projBotScene, projBotCam);
+    }
+    requestAnimationFrame(liveLoop);
+  }
+  document.getElementById('loading').classList.add('done');
+  requestAnimationFrame(liveLoop);
+}
+
+</script>
+</body>
+</html>
