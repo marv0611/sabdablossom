@@ -26,9 +26,9 @@ canvas{position:absolute;top:0;left:0}
 <div id="projLabel"></div>
 
 <!-- SCENE ASSETS -->
-<script id="skydata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="skydata_a" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="skydata_b" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="treedata" type="text/plain">ASSET_PLACEHOLDER</script>
-<script id="petaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="animpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="groundpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 
@@ -66,7 +66,6 @@ const uB = (2 * ROOM_W + ROOM_L) / PERIM;
 
 // ── SHARED CONSTANTS ──
 const EYE_H = 1.6;
-const DURATION = 1800; // 30 minutes
 
 // ═══════════════════════════════════════════════════════
 // RENDERER
@@ -395,10 +394,16 @@ document.addEventListener('keydown', e => {
 
 
 // ═══════════════════════════════════════════════════════
-// SCENE CONTENT — Cherry Blossom
+
+// ═══════════════════════════════════════════════════════
+// SCENE CONTENT — Cherry Blossom Grove
 // ═══════════════════════════════════════════════════════
 
-// ── TEXTURE LOADER ──
+const DUST_COUNT = 200;
+const CLOUD_LAYERS = 3;
+const DURATION = 1800;
+
+// ── HELPERS ──
 const tl = new THREE.TextureLoader();
 function b64T(id, mime) {
   const raw = document.getElementById(id)?.textContent?.trim();
@@ -410,76 +415,57 @@ function b64T(id, mime) {
 async function b64Blob(id) {
   const raw = document.getElementById(id)?.textContent?.trim();
   if (!raw || raw === 'ASSET_PLACEHOLDER') return null;
-  // Use fetch with data URI — browser decodes b64 natively, non-blocking
   const resp = await fetch('data:application/octet-stream;base64,' + raw);
   const buf = await resp.arrayBuffer();
-  const blob = new Blob([buf], { type: 'model/gltf-binary' });
-  return URL.createObjectURL(blob);
+  return URL.createObjectURL(new Blob([buf], { type: 'model/gltf-binary' }));
 }
 
-// ── SKY ──
-const skyTex = b64T('skydata', 'image/jpeg');
-skyTex.mapping = THREE.EquirectangularReflectionMapping;
-skyTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-skyTex.minFilter = THREE.LinearMipmapLinearFilter;
-skyTex.magFilter = THREE.LinearFilter;
-skyTex.generateMipmaps = true;
+// ── DUAL SKY (crossfade like murmuration) ──
+const skyTexA = b64T('skydata_a', 'image/jpeg');
+skyTexA.mapping = THREE.EquirectangularReflectionMapping;
+skyTexA.anisotropy = renderer.capabilities.getMaxAnisotropy();
+skyTexA.minFilter = THREE.LinearMipmapLinearFilter;
+skyTexA.magFilter = THREE.LinearFilter;
+skyTexA.generateMipmaps = true;
+
+const skyTexB = b64T('skydata_b', 'image/jpeg');
+skyTexB.mapping = THREE.EquirectangularReflectionMapping;
+skyTexB.anisotropy = renderer.capabilities.getMaxAnisotropy();
+skyTexB.minFilter = THREE.LinearMipmapLinearFilter;
+skyTexB.magFilter = THREE.LinearFilter;
+skyTexB.generateMipmaps = true;
 
 const skySphereGeo = new THREE.SphereGeometry(400, 64, 32);
 const skySphereMat = new THREE.ShaderMaterial({
   uniforms: {
-    tex: { value: skyTex },
-    tintColor: { value: new THREE.Color(1.0, 0.94, 0.96) },
-    uTime: { value: 0 },
+    texA: { value: skyTexA },
+    texB: { value: skyTexB },
+    mixVal: { value: 0.0 },
+    tintColor: { value: new THREE.Color(1.0, 0.88, 0.92) },
   },
   vertexShader: `
     varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
   `,
   fragmentShader: `
     precision highp float;
-    uniform sampler2D tex;
+    uniform sampler2D texA, texB;
+    uniform float mixVal;
     uniform vec3 tintColor;
-    uniform float uTime;
     varying vec2 vUv;
-    float dither(vec2 co) {
-      return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-    }
+    float dither(vec2 co) { return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453) - 0.5; }
     void main() {
-      vec4 c = texture2D(tex, vUv);
-      vec3 col = c.rgb * tintColor;
-
-      // Gentle saturation — keep natural, avoid neon
+      vec4 a = texture2D(texA, vUv);
+      vec4 b = texture2D(texB, vUv);
+      vec3 col = mix(a.rgb, b.rgb, mixVal) * tintColor;
       float luma = dot(col, vec3(0.299, 0.587, 0.114));
-      col = mix(vec3(luma), col, 1.15);
-
-      // Soft contrast
-      col = (col - 0.5) * 1.05 + 0.5;
-
-      // Cloud brightness lift
+      col = mix(vec3(luma), col, 1.20);
+      col = (col - 0.5) * 1.08 + 0.5;
       float skyLuma = dot(col, vec3(0.299, 0.587, 0.114));
-      float liftAmount = smoothstep(0.0, 0.6, skyLuma) * (1.0 - smoothstep(0.6, 0.95, skyLuma));
-      col += liftAmount * 0.15;
-
-      // Subtle warm tint on dark areas
-      float darkCloud = (1.0 - smoothstep(0.0, 0.5, skyLuma)) * 0.10;
-      col.r += darkCloud * 0.8;
-      col.g += darkCloud * 0.3;
-      col.b += darkCloud * 0.4;
-
-      // Mask lower hemisphere — fade to fog colour to hide HDRI ground/buildings
-      float horizonMask = smoothstep(0.35, 0.48, vUv.y);  // vUv.y=0.5 is horizon
-      vec3 fogCol = vec3(0.82, 0.68, 0.72);
-      col = mix(fogCol, col, horizonMask);
-
-      // Gentle breathing
-      float breath = sin(uTime * 0.003) * 0.02;
-      col.r += breath;
-      col.b -= breath * 0.5;
-
+      float lift = smoothstep(0.0, 0.6, skyLuma) * (1.0 - smoothstep(0.6, 0.95, skyLuma));
+      col += lift * 0.12;
+      float horizonFade = smoothstep(0.38, 0.46, vUv.y);
+      col = mix(vec3(0.78, 0.68, 0.72), col, horizonFade);
       col = clamp(col, 0.0, 1.0);
       col += dither(gl_FragCoord.xy) / 255.0;
       gl_FragColor = vec4(col, 1.0);
@@ -490,312 +476,138 @@ const skySphereMat = new THREE.ShaderMaterial({
 const skySphere = new THREE.Mesh(skySphereGeo, skySphereMat);
 contentScene.add(skySphere);
 contentScene.background = null;
-contentScene.environment = skyTex;
+contentScene.environment = skyTexA;
 
-// ── LIGHTING — soft late-afternoon warmth (reference: golden light through canopy) ──
+// ── LIGHTING ──
 const ambient = new THREE.AmbientLight(0xc89898, 0.45);
 contentScene.add(ambient);
-
 const hemi = new THREE.HemisphereLight(0xffd0b0, 0x3a2030, 0.45);
 contentScene.add(hemi);
-
 const sun = new THREE.DirectionalLight(0xffe0c0, 0.80);
-sun.position.set(8, 12, -10);
-contentScene.add(sun);
-
+sun.position.set(8, 12, -10); contentScene.add(sun);
 const rim = new THREE.DirectionalLight(0xffb0c0, 0.25);
-rim.position.set(-10, 6, 8);
-contentScene.add(rim);
-
+rim.position.set(-10, 6, 8); contentScene.add(rim);
 const fill = new THREE.DirectionalLight(0xc0a0b8, 0.20);
-fill.position.set(0, 4, 12);
-contentScene.add(fill);
+fill.position.set(0, 4, 12); contentScene.add(fill);
 
-// ── FOG — dense pink haze to mask HDRI buildings and create depth ──
-contentScene.fog = new THREE.FogExp2(0xd0a0b0, 0.018);
+contentScene.fog = new THREE.FogExp2(0xd0a0b0, 0.015);
 
-// ── LOWER CLOUD BANK — thick, low, masks horizon ──
-const CLOUD_LAYERS = 3;
+// ── CLOUD BANK ──
 const cloudMeshes = [];
 for (let li = 0; li < CLOUD_LAYERS; li++) {
-  const cloudGeo = new THREE.PlaneGeometry(900, 900, 1, 1);
   const cloudMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
     uniforms: { uTime: { value: 0 }, uLayer: { value: li } },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-    `,
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
-      precision highp float;
-      uniform float uTime, uLayer;
-      varying vec2 vUv;
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-      float noise(vec2 p) {
-        vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
-        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y);
-      }
-      float fbm(vec2 p) {
-        float v=0.0, a=0.5;
-        for(int i=0;i<5;i++) { v+=a*noise(p); p*=2.0; a*=0.5; }
-        return v;
-      }
-      void main() {
-        vec2 uv = vUv;
-        float speed = 0.006 + uLayer * 0.002;
-        float n = fbm(uv * (2.5 + uLayer * 0.8) + vec2(uTime * speed + uLayer * 1.7, uTime * speed * 0.4));
-        float dist = length(uv - 0.5) * 2.0;
-        float fade = smoothstep(1.0, 0.3, dist);
-        float alpha = n * fade * (0.25 - uLayer * 0.04);
-        alpha *= smoothstep(0.35, 0.5, n);
-        vec3 col = mix(vec3(0.90, 0.72, 0.78), vec3(0.95, 0.85, 0.75), n * 0.6 + uLayer * 0.2);
-        gl_FragColor = vec4(col, alpha);
-      }
-    `,
+      precision highp float; uniform float uTime, uLayer; varying vec2 vUv;
+      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
+      float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<5;i++){v+=a*noise(p);p*=2.0;a*=0.5;}return v;}
+      void main(){float n=fbm(vUv*(2.5+uLayer*0.8)+vec2(uTime*(0.006+uLayer*0.002)+uLayer*1.7,uTime*0.002));
+        float fade=smoothstep(1.0,0.3,length(vUv-0.5)*2.0);float alpha=n*fade*(0.20-uLayer*0.04)*smoothstep(0.35,0.5,n);
+        vec3 col=mix(vec3(0.90,0.72,0.78),vec3(0.95,0.85,0.75),n*0.6+uLayer*0.2);gl_FragColor=vec4(col,alpha);}`,
   });
-  const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
-  cloudMesh.rotation.x = -Math.PI / 2;
-  cloudMesh.position.y = -4.0 + li * 1.2;  // lower than before — helps mask horizon
-  contentScene.add(cloudMesh);
-  cloudMeshes.push(cloudMesh);
+  const cm = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), cloudMat);
+  cm.rotation.x = -Math.PI/2; cm.position.y = -4.0+li*1.2;
+  contentScene.add(cm); cloudMeshes.push(cm);
 }
 
-// ── DUST PARTICLES ──
-const DUST_COUNT = 200;
+// ── DUST ──
 const dustGeo = new THREE.BufferGeometry();
-const dustPos = new Float32Array(DUST_COUNT * 3);
-const dustSizes = new Float32Array(DUST_COUNT);
-const dustSpeeds = new Float32Array(DUST_COUNT * 3);
-const dustPhases = new Float32Array(DUST_COUNT);
-for (let i = 0; i < DUST_COUNT; i++) {
-  const theta = Math.random() * Math.PI * 2;
-  const phi = Math.acos(2 * Math.random() - 1);
-  const r = 3 + Math.random() * 12;
-  dustPos[i*3]   = Math.sin(phi) * Math.cos(theta) * r;
-  dustPos[i*3+1] = Math.sin(phi) * Math.sin(theta) * r - 1;
-  dustPos[i*3+2] = Math.cos(phi) * r;
-  dustSizes[i] = 1.5 + Math.random() * 2.5;
-  dustSpeeds[i*3]   = (Math.random() - 0.5) * 0.0003;
-  dustSpeeds[i*3+1] = Math.random() * 0.0002;
-  dustSpeeds[i*3+2] = (Math.random() - 0.5) * 0.0003;
-  dustPhases[i] = Math.random() * Math.PI * 2;
-}
-dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-dustGeo.setAttribute('size', new THREE.BufferAttribute(dustSizes, 1));
-const dustMat = new THREE.ShaderMaterial({
-  transparent: true, depthWrite: false,
-  uniforms: {
-    uTime: { value: 0 },
-    uColor: { value: new THREE.Color(1.0, 0.92, 0.88) },
-    uOpacity: { value: 0.30 },
-  },
-  vertexShader: `
-    attribute float size;
-    void main() {
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = size * (200.0 / -mv.z);
-      gl_Position = projectionMatrix * mv;
-    }
-  `,
-  fragmentShader: `
-    precision highp float;
-    uniform vec3 uColor;
-    uniform float uOpacity;
-    void main() {
-      float d = length(gl_PointCoord - 0.5);
-      if (d > 0.5) discard;
-      gl_FragColor = vec4(uColor, smoothstep(0.5, 0.1, d) * uOpacity);
-    }
-  `,
+const dustPos = new Float32Array(DUST_COUNT*3), dustSizes = new Float32Array(DUST_COUNT);
+const dustSpeeds = new Float32Array(DUST_COUNT*3), dustPhases = new Float32Array(DUST_COUNT);
+for(let i=0;i<DUST_COUNT;i++){const t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1),r=3+Math.random()*12;
+  dustPos[i*3]=Math.sin(p)*Math.cos(t)*r;dustPos[i*3+1]=Math.sin(p)*Math.sin(t)*r-1;dustPos[i*3+2]=Math.cos(p)*r;
+  dustSizes[i]=1.5+Math.random()*2.5;dustSpeeds[i*3]=(Math.random()-0.5)*0.0003;dustSpeeds[i*3+1]=Math.random()*0.0002;
+  dustSpeeds[i*3+2]=(Math.random()-0.5)*0.0003;dustPhases[i]=Math.random()*Math.PI*2;}
+dustGeo.setAttribute('position',new THREE.BufferAttribute(dustPos,3));
+dustGeo.setAttribute('size',new THREE.BufferAttribute(dustSizes,1));
+const dustMat = new THREE.ShaderMaterial({transparent:true,depthWrite:false,
+  uniforms:{uColor:{value:new THREE.Color(1,0.92,0.88)},uOpacity:{value:0.30}},
+  vertexShader:`attribute float size;void main(){vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=size*(200.0/-mv.z);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`precision highp float;uniform vec3 uColor;uniform float uOpacity;void main(){float d=length(gl_PointCoord-0.5);if(d>0.5)discard;gl_FragColor=vec4(uColor,smoothstep(0.5,0.1,d)*uOpacity);}`,
 });
 contentScene.add(new THREE.Points(dustGeo, dustMat));
 
-// ── GOD RAYS — very subtle golden streaks ──
+// ── GOD RAYS ──
 const godRayGroup = new THREE.Group();
-for (let i = 0; i < 6; i++) {
-  const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.3;
-  const geo = new THREE.PlaneGeometry(2 + Math.random() * 3, 35 + Math.random() * 20);
-  const mat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    uniforms: { uOpacity: { value: 0.03 + Math.random() * 0.02 } },
-    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      precision highp float;
-      uniform float uOpacity; varying vec2 vUv;
-      void main() {
-        float fade = smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
-        float center = smoothstep(0.0, 0.5, vUv.x) * smoothstep(1.0, 0.5, vUv.x);
-        gl_FragColor = vec4(1.0, 0.92, 0.80, fade * center * uOpacity);
-      }
-    `,
+for(let i=0;i<6;i++){const angle=(i/6)*Math.PI*2+Math.random()*0.3;
+  const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,
+    uniforms:{uOpacity:{value:0.025+Math.random()*0.015}},
+    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`precision highp float;uniform float uOpacity;varying vec2 vUv;void main(){float f=smoothstep(0.0,0.3,vUv.y)*smoothstep(1.0,0.7,vUv.y)*smoothstep(0.0,0.5,vUv.x)*smoothstep(1.0,0.5,vUv.x);gl_FragColor=vec4(1.0,0.92,0.80,f*uOpacity);}`,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(Math.cos(angle)*25, 10 + Math.random()*6, Math.sin(angle)*25);
-  mesh.lookAt(0, EYE_H, 0);
-  godRayGroup.add(mesh);
-}
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(2+Math.random()*3,30+Math.random()*15),mat);
+  m.position.set(Math.cos(angle)*25,10+Math.random()*5,Math.sin(angle)*25);m.lookAt(0,EYE_H,0);
+  godRayGroup.add(m);}
 contentScene.add(godRayGroup);
-
 
 // ═══════════════════════════════════════════════════════
 // GLB LOADING
 // ═══════════════════════════════════════════════════════
 const gltfLoader = new GLTFLoader();
 let readyCount = 0;
-const TOTAL_ASSETS = 3;  // trees, animated petals, ground petals
+const TOTAL_ASSETS = 3;
 function checkReady() {
   if (++readyCount >= TOTAL_ASSETS) {
     document.getElementById('loading').classList.add('done');
     window.SABDA_READY = true;
-    console.log('SABDA Cherry Blossom: All assets loaded');
-  }
+    console.log('SABDA: All ' + TOTAL_ASSETS + ' assets loaded');
+  } else { console.log('SABDA: Asset ' + readyCount + '/' + TOTAL_ASSETS); }
 }
-// Safety timeout — never stuck on loading screen forever
-setTimeout(() => {
-  if (!window.SABDA_READY) {
-    console.warn('SABDA: Loading timeout — starting with ' + readyCount + '/' + TOTAL_ASSETS + ' assets');
-    document.getElementById('loading').classList.add('done');
-    window.SABDA_READY = true;
-  }
-}, 30000);
+setTimeout(() => { if (!window.SABDA_READY) {
+  console.warn('SABDA: 30s timeout — loaded ' + readyCount + '/' + TOTAL_ASSETS);
+  document.getElementById('loading').classList.add('done'); window.SABDA_READY = true;
+}}, 30000);
 
-// ── CHERRY BLOSSOM TREES ──
-// Grove layout — trees at 22-40m distance, creating depth like reference image
-// 4 instances (not 6) to keep cubemap performance reasonable
+// ── TREES ──
 const treeInstances = [];
 const TREE_PLACEMENTS = [
-  { az: 0.4,  dist: 22,  scale: 0.9,  rotY: 0.0  },   // front-right
-  { az: 2.0,  dist: 30,  scale: 1.1,  rotY: 1.5  },   // left-back
-  { az: 3.6,  dist: 25,  scale: 0.85, rotY: 2.8  },   // back
-  { az: 5.0,  dist: 35,  scale: 1.2,  rotY: 0.7  },   // right-far
+  {az:0.4,dist:22,scale:0.9,rotY:0},{az:2.0,dist:30,scale:1.1,rotY:1.5},
+  {az:3.6,dist:25,scale:0.85,rotY:2.8},{az:5.0,dist:35,scale:1.2,rotY:0.7},
 ];
+b64Blob('treedata').then(url=>{if(!url){checkReady();return;}
+  gltfLoader.load(url,(gltf)=>{URL.revokeObjectURL(url);const base=gltf.scene;
+    const h=new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3()).y;const bs=10/h;
+    for(const pl of TREE_PLACEMENTS){const t=base.clone();const s=bs*pl.scale;t.scale.set(s,s,s);
+      t.position.set(Math.cos(pl.az)*pl.dist,0,Math.sin(pl.az)*pl.dist);t.rotation.y=pl.rotY;
+      t.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
+      contentScene.add(t);treeInstances.push(t);}
+    console.log('Trees: '+TREE_PLACEMENTS.length);checkReady();
+  },undefined,(e)=>{console.error('Tree err:',e);checkReady();});
+}).catch(e=>{console.error('Tree b64:',e);checkReady();});
 
-{
-  b64Blob('treedata').then(url => {
-  if (url) gltfLoader.load(url, (gltf) => {
-    URL.revokeObjectURL(url);
-    const baseModel = gltf.scene;
-    const box = new THREE.Box3().setFromObject(baseModel);
-    const modelHeight = box.getSize(new THREE.Vector3()).y;
-    const baseScale = 10 / modelHeight;  // target 10m tall (natural cherry blossom)
-
-    for (const pl of TREE_PLACEMENTS) {
-      const tree = baseModel.clone();
-      const s = baseScale * pl.scale;
-      tree.scale.set(s, s, s);
-      tree.position.set(Math.cos(pl.az) * pl.dist, 0, Math.sin(pl.az) * pl.dist);
-      tree.rotation.y = pl.rotY;
-      tree.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
-      contentScene.add(tree);
-      treeInstances.push(tree);
-    }
-    console.log(`Trees: ${TREE_PLACEMENTS.length} instances, height ${modelHeight.toFixed(1)} → 10m`);
-    checkReady();
-  }, undefined, (err) => { console.error('Tree load failed:', err); checkReady(); });
-  else checkReady();
-  }).catch(err => { console.error('Tree b64 decode failed:', err); checkReady(); });
-}
-
-// ── ANIMATED FALLING PETALS (rigged GLB, 12.5s loop) ──
-// Clone 10 instances at different positions/phases around the scene
+// ── ANIMATED PETALS ──
 const animPetalMixers = [];
-const ANIM_PETAL_PLACEMENTS = [
-  { x:  0, y: 6, z:  0, s: 1.2, rotY: 0.0 },   // center above viewer
-  { x:  5, y: 7, z: -4, s: 1.0, rotY: 1.0 },
-  { x: -6, y: 5, z:  3, s: 1.1, rotY: 2.3 },
-  { x:  3, y: 8, z:  6, s: 0.9, rotY: 3.5 },
-  { x: -4, y: 6, z: -5, s: 1.3, rotY: 4.8 },
-  { x:  7, y: 5, z:  2, s: 1.0, rotY: 0.7 },
-  { x: -2, y: 9, z: -7, s: 1.1, rotY: 2.0 },
-  { x:  8, y: 7, z: -6, s: 0.8, rotY: 5.2 },
-  { x: -8, y: 6, z:  7, s: 1.2, rotY: 1.5 },
-  { x:  0, y: 8, z:  8, s: 1.0, rotY: 3.8 },
-];
+const APL=[{x:0,y:6,z:0,s:1.2,r:0},{x:5,y:7,z:-4,s:1,r:1},{x:-6,y:5,z:3,s:1.1,r:2.3},
+  {x:3,y:8,z:6,s:0.9,r:3.5},{x:-4,y:6,z:-5,s:1.3,r:4.8},{x:7,y:5,z:2,s:1,r:0.7},
+  {x:-2,y:9,z:-7,s:1.1,r:2},{x:8,y:7,z:-6,s:0.8,r:5.2},{x:-8,y:6,z:7,s:1.2,r:1.5},{x:0,y:8,z:8,s:1,r:3.8}];
+b64Blob('animpetaldata').then(url=>{if(!url){checkReady();return;}
+  gltfLoader.load(url,(gltf)=>{URL.revokeObjectURL(url);const base=gltf.scene;const clip=gltf.animations[0];
+    for(let i=0;i<APL.length;i++){const pl=APL[i];const clone=SkeletonUtils.clone(base);
+      clone.position.set(pl.x,pl.y,pl.z);clone.scale.setScalar(pl.s);clone.rotation.y=pl.r;
+      const mixer=new THREE.AnimationMixer(clone);const action=mixer.clipAction(clip);action.play();
+      action.time=(i/APL.length)*clip.duration;contentScene.add(clone);animPetalMixers.push({mixer});}
+    console.log('Petals: '+APL.length);checkReady();
+  },undefined,(e)=>{console.error('Petal err:',e);checkReady();});
+}).catch(e=>{console.error('Petal b64:',e);checkReady();});
 
-{
-  b64Blob('animpetaldata').then(url => {
-  if (url) gltfLoader.load(url, (gltf) => {
-    URL.revokeObjectURL(url);
-    const baseModel = gltf.scene;
-    const baseClip = gltf.animations[0];
-    const clipDuration = baseClip.duration;  // 12.5s
+// ── GROUND CARPET (16m×16m tiles) ──
+b64Blob('groundpetaldata').then(url=>{if(!url){checkReady();return;}
+  gltfLoader.load(url,(gltf)=>{URL.revokeObjectURL(url);const base=gltf.scene;let n=0;
+    for(let x=-2;x<=2;x++)for(let z=-2;z<=2;z++){if(x*x+z*z>6)continue;
+      const inst=base.clone();inst.position.set(x*15,-0.05,z*15);inst.rotation.y=Math.random()*Math.PI*2;
+      inst.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
+      contentScene.add(inst);n++;}
+    console.log('Ground: '+n+' tiles');checkReady();
+  },undefined,(e)=>{console.error('Ground err:',e);checkReady();});
+}).catch(e=>{console.error('Ground b64:',e);checkReady();});
 
-    for (let i = 0; i < ANIM_PETAL_PLACEMENTS.length; i++) {
-      const pl = ANIM_PETAL_PLACEMENTS[i];
-      const clone = SkeletonUtils.clone(baseModel);
-      clone.position.set(pl.x, pl.y, pl.z);
-      clone.scale.setScalar(pl.s);
-      clone.rotation.y = pl.rotY;
-
-      // Each clone gets its own mixer with a time offset for variation
-      const mixer = new THREE.AnimationMixer(clone);
-      const action = mixer.clipAction(baseClip);
-      action.play();
-      // Stagger start times so petals aren't all in sync
-      action.time = (i / ANIM_PETAL_PLACEMENTS.length) * clipDuration;
-
-      contentScene.add(clone);
-      animPetalMixers.push({ mixer, action, data: pl });
-    }
-    console.log(`Animated petals: ${ANIM_PETAL_PLACEMENTS.length} instances, ${clipDuration.toFixed(1)}s loop`);
-    checkReady();
-  }, undefined, (err) => { console.error('Animated petals load failed:', err); checkReady(); });
-  else checkReady();
-  }).catch(err => { console.error('Anim petal b64 decode failed:', err); checkReady(); });
-}
-
-// ── GROUND PETAL CARPET ──
-// Load the ground petal scatter GLB, tile it to cover the visible area
-const groundPetalInstances = [];
-{
-  b64Blob('groundpetaldata').then(url => {
-  if (url) gltfLoader.load(url, (gltf) => {
-    URL.revokeObjectURL(url);
-    const baseModel = gltf.scene;
-    const box = new THREE.Box3().setFromObject(baseModel);
-    const size = box.getSize(new THREE.Vector3());
-    console.log(`Ground petal model: ${size.x.toFixed(1)} × ${size.z.toFixed(1)}m`);
-
-    // Scale to cover ground — calculate coverage needed
-    // Place a grid of instances to cover ~60m radius
-    const groundScale = 1.0;  // adjust based on model native size
-    const spacing = Math.max(size.x, size.z) * groundScale * 0.9;  // slight overlap
-
-    const gridRange = 3;  // -3 to +3 = 7×7 grid
-    for (let gx = -gridRange; gx <= gridRange; gx++) {
-      for (let gz = -gridRange; gz <= gridRange; gz++) {
-        // Skip corners (circular coverage, not square)
-        if (gx*gx + gz*gz > gridRange*gridRange + 1) continue;
-        const instance = baseModel.clone();
-        instance.scale.setScalar(groundScale);
-        instance.position.set(gx * spacing, -0.05, gz * spacing);
-        // Random rotation for variety
-        instance.rotation.y = Math.random() * Math.PI * 2;
-        instance.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } });
-        contentScene.add(instance);
-        groundPetalInstances.push(instance);
-      }
-    }
-    console.log(`Ground petals: ${groundPetalInstances.length} tiles, spacing ${spacing.toFixed(1)}m`);
-    checkReady();
-  }, undefined, (err) => { console.error('Ground petals load failed:', err); checkReady(); });
-  else checkReady();
-  }).catch(err => { console.error('Ground petal b64 decode failed:', err); checkReady(); });
-}
-
-// ── FALLBACK GROUND (in case ground GLB doesn't cover enough) ──
-{
-  const groundGeo = new THREE.CircleGeometry(60, 64);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x8a6a60,  // warm earthy brown-pink (petal-covered soil)
-    roughness: 0.95, metalness: 0.0,
-  });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.15;
-  contentScene.add(ground);
-}
-
+// ── FALLBACK GROUND ──
+contentScene.add(Object.assign(new THREE.Mesh(new THREE.CircleGeometry(80,64),
+  new THREE.MeshStandardMaterial({color:0x6a5045,roughness:0.95,metalness:0})),
+  {rotation:{x:-Math.PI/2,y:0,z:0},position:{x:0,y:-0.2,z:0}}));
 
 // ═══════════════════════════════════════════════════════
 // ANIMATION
@@ -804,104 +616,79 @@ let time = 0;
 const fpsEl = document.getElementById('fps');
 let fpsFrames = 0, fpsLast = performance.now();
 
-// PUPPETEER INTERFACE
 window.SABDA_RENDERER = renderer;
-window.SABDA_WALLS = { left: rtLeft, right: rtRight, front: rtFront, back: rtBack };
+window.SABDA_WALLS = {left:rtLeft,right:rtRight,front:rtFront,back:rtBack};
 
 window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   const dt = (1/30) * (speedMultiplier || 1);
   time = simTime;
 
-  // ── SKY DRIFT ──
-  skySphere.rotation.y = (time / DURATION) * Math.PI * 2 * 0.5;
-  skySphereMat.uniforms.uTime.value = time;
+  // ── SKY CROSSFADE ──
+  const skyPhase = (time/DURATION)*Math.PI*2;
+  const warmth = Math.pow((Math.sin(skyPhase)+1)/2, 0.5);
+  skySphereMat.uniforms.mixVal.value = 1.0 - warmth;
+  skySphereMat.uniforms.tintColor.value.setRGB(0.98+warmth*0.06, 0.86+warmth*0.06, 0.90+(1-warmth)*0.04);
+  skySphere.rotation.y = (time/DURATION)*Math.PI;
 
-  // ── CLOUD BANK ──
-  for (const cm of cloudMeshes) cm.material.uniforms.uTime.value = time;
+  // ── LIGHTING ──
+  sun.intensity = 0.70+warmth*0.15;
+  sun.color.setRGB(1.0, 0.70+warmth*0.08, 0.52+warmth*0.06);
+  ambient.intensity = 0.40+warmth*0.08;
+  hemi.intensity = 0.40+warmth*0.10;
+  contentScene.fog.color.setRGB(0.80+warmth*0.05, 0.62+warmth*0.04, 0.68-warmth*0.02);
+
+  // ── CLOUDS ──
+  for(const cm of cloudMeshes) cm.material.uniforms.uTime.value=time;
 
   // ── DUST ──
-  dustMat.uniforms.uTime.value = time;
-  const dPos = dustGeo.attributes.position.array;
-  for (let i = 0; i < DUST_COUNT; i++) {
-    const i3 = i * 3;
-    dPos[i3]   += dustSpeeds[i3]   + Math.sin(time * 0.3 + dustPhases[i]) * 0.0004;
-    dPos[i3+1] += dustSpeeds[i3+1] + Math.sin(time * 0.2 + dustPhases[i] * 1.7) * 0.0002;
-    dPos[i3+2] += dustSpeeds[i3+2] + Math.cos(time * 0.25 + dustPhases[i] * 0.8) * 0.0004;
-    const dx = dPos[i3], dy = dPos[i3+1], dz = dPos[i3+2];
-    if (dx*dx + dy*dy + dz*dz > 25*25 || dy > 15) {
-      const t2 = Math.random() * Math.PI * 2, p2 = Math.acos(2 * Math.random() - 1), r2 = 3 + Math.random() * 10;
-      dPos[i3] = Math.sin(p2) * Math.cos(t2) * r2;
-      dPos[i3+1] = Math.sin(p2) * Math.sin(t2) * r2 - 1;
-      dPos[i3+2] = Math.cos(p2) * r2;
-    }
-  }
-  dustGeo.attributes.position.needsUpdate = true;
-
-  // Dust homing near loop boundary
-  const dustLoopT = time % DURATION;
-  const dustResetBlend = dustLoopT < 20 ? 1 - dustLoopT / 20 : dustLoopT > 1780 ? (dustLoopT - 1780) / 20 : 0;
-  if (dustResetBlend > 0) {
-    for (let i = 0; i < DUST_COUNT; i++) {
-      const i3 = i * 3;
-      const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-      dPos[i3]   += ((Math.abs(seed % 1) - 0.5) * 40 - dPos[i3]) * dustResetBlend * 0.03;
-      dPos[i3+1] += ((Math.abs(Math.sin(seed * 2.3) % 1)) * 12 - dPos[i3+1]) * dustResetBlend * 0.03;
-      dPos[i3+2] += ((Math.abs(Math.sin(seed * 3.7) % 1) - 0.5) * 40 - dPos[i3+2]) * dustResetBlend * 0.03;
-    }
-    dustGeo.attributes.position.needsUpdate = true;
-  }
-
-  // ── BREATHING COLOUR — gentle, natural ──
-  const breathCycle = Math.sin(time * 0.004) * 0.5 + 0.5;
-  skySphereMat.uniforms.tintColor.value.setRGB(
-    0.98 + breathCycle * 0.04,
-    0.92 + breathCycle * 0.04,
-    0.94 - breathCycle * 0.02
-  );
-  sun.intensity = 0.75 + breathCycle * 0.10;
-  ambient.intensity = 0.42 + breathCycle * 0.06;
+  const dP=dustGeo.attributes.position.array;
+  for(let i=0;i<DUST_COUNT;i++){const i3=i*3;
+    dP[i3]+=dustSpeeds[i3]+Math.sin(time*0.3+dustPhases[i])*0.0004;
+    dP[i3+1]+=dustSpeeds[i3+1]+Math.sin(time*0.2+dustPhases[i]*1.7)*0.0002;
+    dP[i3+2]+=dustSpeeds[i3+2]+Math.cos(time*0.25+dustPhases[i]*0.8)*0.0004;
+    if(dP[i3]*dP[i3]+dP[i3+1]*dP[i3+1]+dP[i3+2]*dP[i3+2]>625||dP[i3+1]>15){
+      const t2=Math.random()*Math.PI*2,p2=Math.acos(2*Math.random()-1),r2=3+Math.random()*10;
+      dP[i3]=Math.sin(p2)*Math.cos(t2)*r2;dP[i3+1]=Math.sin(p2)*Math.sin(t2)*r2-1;dP[i3+2]=Math.cos(p2)*r2;}}
+  dustGeo.attributes.position.needsUpdate=true;
+  const dlt=time%DURATION,drb=dlt<20?1-dlt/20:dlt>1780?(dlt-1780)/20:0;
+  if(drb>0){for(let i=0;i<DUST_COUNT;i++){const i3=i*3,s=Math.sin(i*127.1+311.7)*43758.5453;
+    dP[i3]+=((Math.abs(s%1)-0.5)*40-dP[i3])*drb*0.03;
+    dP[i3+1]+=((Math.abs(Math.sin(s*2.3)%1))*12-dP[i3+1])*drb*0.03;
+    dP[i3+2]+=((Math.abs(Math.sin(s*3.7)%1)-0.5)*40-dP[i3+2])*drb*0.03;}
+    dustGeo.attributes.position.needsUpdate=true;}
 
   // ── ANIMATED PETALS ──
-  for (const ap of animPetalMixers) {
-    ap.mixer.update(dt);
-  }
+  for(const ap of animPetalMixers) ap.mixer.update(dt);
 
-  // ── GENTLE TREE SWAY ──
-  for (let ti = 0; ti < treeInstances.length; ti++) {
-    treeInstances[ti].rotation.z = Math.sin(time * 0.12 + ti * 2.0) * 0.005;
-    treeInstances[ti].rotation.x = Math.sin(time * 0.10 + ti * 1.3 + 1.0) * 0.003;
-  }
+  // ── TREE SWAY ──
+  for(let i=0;i<treeInstances.length;i++){
+    treeInstances[i].rotation.z=Math.sin(time*0.12+i*2)*0.005;
+    treeInstances[i].rotation.x=Math.sin(time*0.10+i*1.3+1)*0.003;}
 
   // ── GOD RAYS ──
-  godRayGroup.children.forEach((ray, i) => {
-    ray.material.uniforms.uOpacity.value = (0.025 + Math.sin(time * 0.06 + i * 1.5) * 0.01) * (0.8 + breathCycle * 0.2);
-  });
+  godRayGroup.children.forEach((r,i)=>{
+    r.material.uniforms.uOpacity.value=(0.02+Math.sin(time*0.06+i*1.5)*0.01)*(0.8+warmth*0.2);});
 
-  // ── RENDER 4 WALLS ──
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  // ── RENDER ──
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.setRenderTarget(null);
   cubeCamera.update(renderer, contentScene);
-
-  renderer.toneMapping = THREE.NoToneMapping;
-  const cubeTex = cubeRT.texture;
-  matFront.uniforms.tCube.value = cubeTex;
-  matRight.uniforms.tCube.value = cubeTex;
-  matBack.uniforms.tCube.value = cubeTex;
-  matLeft.uniforms.tCube.value = cubeTex;
-  matRoomFront.uniforms.tCube.value = cubeTex;
-  matRoomRight.uniforms.tCube.value = cubeTex;
-  matRoomBack.uniforms.tCube.value = cubeTex;
-  matRoomLeft.uniforms.tCube.value = cubeTex;
-
-  renderer.setRenderTarget(rtFront); renderer.render(eqScnFront, eqCam);
-  renderer.setRenderTarget(rtRight); renderer.render(eqScnRight, eqCam);
-  renderer.setRenderTarget(rtBack);  renderer.render(eqScnBack, eqCam);
-  renderer.setRenderTarget(rtLeft);  renderer.render(eqScnLeft, eqCam);
+  renderer.toneMapping=THREE.NoToneMapping;
+  const ct=cubeRT.texture;
+  matFront.uniforms.tCube.value=ct;matRight.uniforms.tCube.value=ct;
+  matBack.uniforms.tCube.value=ct;matLeft.uniforms.tCube.value=ct;
+  matRoomFront.uniforms.tCube.value=ct;matRoomRight.uniforms.tCube.value=ct;
+  matRoomBack.uniforms.tCube.value=ct;matRoomLeft.uniforms.tCube.value=ct;
+  renderer.setRenderTarget(rtFront);renderer.render(eqScnFront,eqCam);
+  renderer.setRenderTarget(rtRight);renderer.render(eqScnRight,eqCam);
+  renderer.setRenderTarget(rtBack);renderer.render(eqScnBack,eqCam);
+  renderer.setRenderTarget(rtLeft);renderer.render(eqScnLeft,eqCam);
   renderer.setRenderTarget(null);
 };
 
 window.SABDA_STATUS = function(t) {
-  return `breath=${(Math.sin(t * 0.004) * 0.5 + 0.5).toFixed(2)}`;
+  const w=Math.pow((Math.sin((t/DURATION)*Math.PI*2)+1)/2,0.5),m=1-w;
+  return 'warmth='+w.toFixed(2)+' mix='+m.toFixed(2)+' ('+(m<0.1?'Citrus':m>0.9?'Sunflower':'blend')+')';
 };
 
 // ── LIVE PREVIEW ──

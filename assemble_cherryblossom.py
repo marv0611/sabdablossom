@@ -9,9 +9,9 @@ with open(slim, 'r') as f:
     html = f.read()
 
 assets = {
-    'skydata':          'assets_cherryblossom/skydata.b64',
+    'skydata_a':        'assets_cherryblossom/skydata_a.b64',
+    'skydata_b':        'assets_cherryblossom/skydata_b.b64',
     'treedata':         'assets_cherryblossom/treedata.b64',
-    'petaldata':        'assets_cherryblossom/petaldata.b64',
     'animpetaldata':    'assets_cherryblossom/animpetaldata.b64',
     'groundpetaldata':  'assets_cherryblossom/groundpetaldata.b64',
 }
