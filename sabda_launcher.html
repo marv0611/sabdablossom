@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>SABDA — Visual Switcher</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; font-family: -apple-system, system-ui, sans-serif; }
+
+iframe { width: 100%; height: 100%; border: none; position: absolute; top: 0; left: 0; }
+iframe.hidden { display: none; }
+
+/* Control bar */
+#controls {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; display: flex; gap: 8px; align-items: center;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 12px;
+  padding: 8px 16px;
+}
+.btn {
+  padding: 8px 18px; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px; background: rgba(255,255,255,0.08);
+  color: #ccc; font-size: 13px; cursor: pointer; transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.btn.active { background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.4); }
+.divider { width: 1px; height: 24px; background: rgba(255,255,255,0.15); }
+.label { color: rgba(255,255,255,0.4); font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
+#viewLabel {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 1000; color: rgba(255,255,255,0.7); font-size: 14px;
+  background: rgba(0,0,0,0.6); padding: 6px 16px; border-radius: 8px;
+  transition: opacity 0.5s; pointer-events: none;
+}
+
+/* Keyboard hints */
+#hints {
+  position: fixed; top: 20px; right: 20px; z-index: 1000;
+  color: rgba(255,255,255,0.35); font-size: 11px; line-height: 1.8;
+  background: rgba(0,0,0,0.5); padding: 8px 12px; border-radius: 8px;
+  pointer-events: none;
+}
+kbd { background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<iframe id="frameBlossom" src="sabda_cherryblossom_full.html"></iframe>
+<iframe id="frameMurmuration" class="hidden" src="about:blank"></iframe>
+
+<div id="viewLabel">Cherry Blossom</div>
+
+<div id="controls">
+  <span class="label">Scene</span>
+  <button class="btn active" id="btnBlossom" onclick="switchTo('blossom')">🌸 Cherry Blossom</button>
+  <button class="btn" id="btnMurmuration" onclick="switchTo('murmuration')">🌅 Murmuration</button>
+  <div class="divider"></div>
+  <span class="label">View</span>
+  <button class="btn" onclick="sendKey('r')">📦 Room 360°</button>
+  <button class="btn" onclick="sendKey('p')">📺 Strip View</button>
+  <div class="divider"></div>
+  <span class="label">Speed</span>
+  <button class="btn" onclick="sendKey('y')">⏩ 5×</button>
+  <button class="btn" onclick="sendKey('t')">⏩ 30×</button>
+</div>
+
+<div id="hints">
+  <kbd>1</kbd> Cherry Blossom &nbsp; <kbd>2</kbd> Murmuration<br>
+  <kbd>R</kbd> Room 360° &nbsp; <kbd>P</kbd> Strip cycle<br>
+  <kbd>Y</kbd> 5× speed &nbsp; <kbd>T</kbd> 30× speed<br>
+  <kbd>D</kbd> Guides &nbsp; <kbd>H</kbd> Hide UI
+</div>
+
+<script>
+let current = 'blossom';
+let murmurationLoaded = false;
+const MURMURATION_URL = '../sabda/sabda_murmuration_full.html'; // adjust path as needed
+
+function switchTo(scene) {
+  const fb = document.getElementById('frameBlossom');
+  const fm = document.getElementById('frameMurmuration');
+  const bb = document.getElementById('btnBlossom');
+  const bm = document.getElementById('btnMurmuration');
+  const vl = document.getElementById('viewLabel');
+
+  if (scene === 'blossom') {
+    fb.classList.remove('hidden');
+    fm.classList.add('hidden');
+    bb.classList.add('active');
+    bm.classList.remove('active');
+    vl.textContent = 'Cherry Blossom';
+    current = 'blossom';
+  } else {
+    if (!murmurationLoaded) {
+      fm.src = MURMURATION_URL;
+      murmurationLoaded = true;
+    }
+    fm.classList.remove('hidden');
+    fb.classList.add('hidden');
+    bm.classList.add('active');
+    bb.classList.remove('active');
+    vl.textContent = 'Murmuration';
+    current = 'murmuration';
+  }
+
+  vl.style.opacity = 1;
+  clearTimeout(vl._t);
+  vl._t = setTimeout(() => { vl.style.opacity = 0; }, 2000);
+}
+
+function sendKey(key) {
+  const frame = current === 'blossom'
+    ? document.getElementById('frameBlossom')
+    : document.getElementById('frameMurmuration');
+  try {
+    frame.contentDocument.dispatchEvent(new KeyboardEvent('keydown', { key: key }));
+  } catch(e) {
+    // Cross-origin fallback — won't work for file:// to file:// but worth trying
+    console.warn('Cannot dispatch key to iframe:', e);
+  }
+}
+
+// Keyboard shortcuts on the launcher itself
+document.addEventListener('keydown', e => {
+  if (e.key === '1') switchTo('blossom');
+  if (e.key === '2') switchTo('murmuration');
+  if (e.key === 'h' || e.key === 'H') {
+    const c = document.getElementById('controls');
+    const h = document.getElementById('hints');
+    c.style.display = c.style.display === 'none' ? 'flex' : 'none';
+    h.style.display = h.style.display === 'none' ? 'block' : 'none';
+  }
+  // Forward other keys to active iframe
+  if (['r','R','p','P','d','D','y','Y','t','T',' '].includes(e.key)) {
+    sendKey(e.key);
+  }
+});
+</script>
+</body>
+</html>
