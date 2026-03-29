@@ -608,23 +608,32 @@ const APL=[
   else checkReady();
 }
 
-// ── PHOTO-REALISTIC GROUND (Poly Haven forest_ground_01, 8K, seamless tileable) ──
-// 8192×8192 photoscan, 10×10 tiles across 100m = 10m per tile = 819 px/m
+// ── GROUND: TWO-LAYER (sharp near + fog far) ──
+// Near plane: 4K Poly Haven photoscan, tight tile density where viewer sees detail
+// Far plane: fog-matched color, costs nothing, fills the distance
 {
+  // NEAR: 4K texture, 60m×60m, 6×6 tiles = 10m per tile = 410 px/m
   const tex = b64T('groundphotodata', 'image/jpeg');
   if (tex) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(10, 10);
+    tex.repeat.set(6, 6);
     tex.anisotropy = 16;
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
   }
-  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(100, 100),
+  const nearGnd = new THREE.Mesh(new THREE.PlaneGeometry(60, 60),
     new THREE.MeshBasicMaterial({ map: tex || null, color: tex ? 0xffffff : 0x3a5a2a }));
-  gnd.rotation.x = -Math.PI / 2;
-  gnd.position.y = -0.05;
-  contentScene.add(gnd);
+  nearGnd.rotation.x = -Math.PI / 2;
+  nearGnd.position.y = -0.04;
+  contentScene.add(nearGnd);
+
+  // FAR: solid fog-matched color, huge plane, practically invisible in fog
+  const farGnd = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
+    new THREE.MeshBasicMaterial({ color: 0xd0a0b0 }));
+  farGnd.rotation.x = -Math.PI / 2;
+  farGnd.position.y = -0.10;
+  contentScene.add(farGnd);
 }
 
 
