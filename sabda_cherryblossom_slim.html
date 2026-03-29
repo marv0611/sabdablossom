@@ -610,7 +610,7 @@ const APL=[
 // ── FALLBACK GROUND (under petal carpet, same pinkish-brown tone) ──
 {
   const gnd = new THREE.Mesh(new THREE.CircleGeometry(100, 64),
-    new THREE.MeshStandardMaterial({color: 0x8a7068, roughness: 0.95, metalness: 0}));
+    new THREE.MeshBasicMaterial({color: 0xd0a0b0}));
   gnd.rotation.x = -Math.PI / 2;
   gnd.position.y = -0.08;
   contentScene.add(gnd);
