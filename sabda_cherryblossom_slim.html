@@ -608,11 +608,13 @@ const APL=[
   else checkReady();
 }
 
-// ── PHOTO-REALISTIC GROUND (Poly Haven forest+grass blend, 4K, no tiling) ──
+// ── PHOTO-REALISTIC GROUND (Poly Haven forest_ground_01, 4K, seamless tileable) ──
+// Poly Haven textures are photoscanned and designed to tile with zero visible seams
 {
   const tex = b64T('groundphotodata', 'image/jpeg');
   if (tex) {
-    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(8, 8);
     tex.anisotropy = 16;
     tex.colorSpace = THREE.SRGBColorSpace;
   }
