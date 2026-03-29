@@ -648,7 +648,7 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   const warmth = Math.pow((Math.sin((time/DURATION)*Math.PI*2)+1)/2, 0.5);
   skySphereMat.uniforms.mixVal.value = 1.0 - warmth;
   skySphereMat.uniforms.tintColor.value.setRGB(0.98+warmth*0.04, 0.88+warmth*0.04, 0.91+(1-warmth)*0.03);
-  skySphere.rotation.y = (time/DURATION)*Math.PI*5;
+  skySphere.rotation.y = (time/DURATION)*Math.PI*10;
 
   // ── LIGHTING ──
   sun.intensity = 0.75+warmth*0.12;
@@ -662,8 +662,8 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
 
   // ── TREE SWAY ──
   for(let i=0;i<treeInstances.length;i++){
-    treeInstances[i].rotation.z=Math.sin(time*0.10+i*1.7)*0.004;
-    treeInstances[i].rotation.x=Math.sin(time*0.08+i*1.1+0.5)*0.002;
+    treeInstances[i].rotation.z=Math.sin(time*0.30+i*1.7)*0.012;
+    treeInstances[i].rotation.x=Math.sin(time*0.24+i*1.1+0.5)*0.006;
   }
 
   // ── GOD RAYS ──
