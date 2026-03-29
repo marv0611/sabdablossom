@@ -32,6 +32,7 @@ canvas{position:absolute;top:0;left:0}
 <script id="animpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="groundpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="groundphotodata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="rabbitdata" type="text/plain">ASSET_PLACEHOLDER</script>
 
 <script type="importmap">{"imports":{
   "three":"https://unpkg.com/three@0.162.0/build/three.module.js",
@@ -509,7 +510,7 @@ contentScene.add(godRayGroup);
 // ═══════════════════════════════════════════════════════
 const gltfLoader = new GLTFLoader();
 let readyCount = 0;
-const TOTAL_ASSETS = 3;
+const TOTAL_ASSETS = 4;
 function checkReady() {
   if (++readyCount >= TOTAL_ASSETS) {
     document.getElementById('loading').classList.add('done');
@@ -629,6 +630,58 @@ const APL=[
   contentScene.add(farGnd);
 }
 
+// ── RABBITS — small groups hopping through the grove ──
+// Rabbit model: 1597 verts, 48 joints, 0.43s hop cycle
+// Paths: gentle circular arcs at different radii — not too fast, not too slow
+// Real rabbit behavior: hop in groups of 2-3, pause occasionally, meander
+const rabbitMixers = [];
+const rabbitData = [];  // {mesh, mixer, path}
+
+// Each rabbit: radius, speed (rad/s), startAngle, scale, y-offset
+const RABBIT_PATHS = [
+  // Near group (2 rabbits, close together, ~8m out)
+  {r: 8, speed: 0.06, angle: 0,     scale: 0.014, buddy: 0.3},
+  {r: 8.5, speed: 0.058, angle: 0.25, scale: 0.013, buddy: 0},
+  // Mid group (2 rabbits, ~14m)
+  {r: 14, speed: 0.04, angle: 2.0,  scale: 0.012, buddy: 0.2},
+  {r: 14.5, speed: 0.042, angle: 2.15, scale: 0.011, buddy: 0},
+  // Far solo (1 rabbit, ~20m, barely visible in fog)
+  {r: 20, speed: 0.03, angle: 4.0,  scale: 0.010, buddy: 0},
+  // Another near pair (opposite side, ~10m)
+  {r: 10, speed: 0.05, angle: 3.5,  scale: 0.013, buddy: 0.25},
+  {r: 10.3, speed: 0.052, angle: 3.7, scale: 0.012, buddy: 0},
+];
+
+{
+  const url = b64Blob('rabbitdata');
+  if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url);
+    const base = gltf.scene;
+    const clip = gltf.animations[0];
+
+    for(let i = 0; i < RABBIT_PATHS.length; i++){
+      const rp = RABBIT_PATHS[i];
+      const clone = SkeletonUtils.clone(base);
+      clone.scale.setScalar(rp.scale);
+      clone.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
+      contentScene.add(clone);
+
+      const mixer = new THREE.AnimationMixer(clone);
+      const action = mixer.clipAction(clip);
+      action.play();
+      // Stagger animation start so they're not all in sync
+      action.time = (i / RABBIT_PATHS.length) * clip.duration;
+      // Slightly vary playback speed for natural feel (0.7-1.0x — gentle hopping)
+      action.timeScale = 0.7 + (i % 3) * 0.15;
+
+      rabbitMixers.push(mixer);
+      rabbitData.push({ mesh: clone, path: rp, angle: rp.angle });
+    }
+    console.log('Rabbits: ' + RABBIT_PATHS.length + ' on circular paths');
+    checkReady();
+  }, undefined, (e) => { console.error('Rabbit err:', e); checkReady(); });
+  else checkReady();
+}
+
 
 // ═══════════════════════════════════════════════════════
 // ANIMATION
@@ -664,6 +717,25 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   for(let i=0;i<treeInstances.length;i++){
     treeInstances[i].rotation.z=Math.sin(time*0.30+i*1.7)*0.012;
     treeInstances[i].rotation.x=Math.sin(time*0.24+i*1.1+0.5)*0.006;
+  }
+
+  // ── RABBITS — hop along circular paths ──
+  for(let i = 0; i < rabbitData.length; i++){
+    const rd = rabbitData[i];
+    const rp = rd.path;
+    // Advance angle along circular path
+    rd.angle += rp.speed * dt;
+    // Position on circle
+    const x = Math.cos(rd.angle) * rp.r;
+    const z = Math.sin(rd.angle) * rp.r;
+    // Gentle vertical bob synced to hop (subtle, ~2cm)
+    const hopPhase = (time * (0.7 + (i%3)*0.15) / 0.43) * Math.PI * 2;
+    const yBob = Math.abs(Math.sin(hopPhase)) * 0.02 * rp.scale * 70;
+    rd.mesh.position.set(x, yBob, z);
+    // Face direction of travel (tangent to circle)
+    rd.mesh.rotation.y = rd.angle + Math.PI * 0.5;
+    // Update animation mixer
+    rabbitMixers[i].update(dt);
   }
 
   // ── GOD RAYS ──
