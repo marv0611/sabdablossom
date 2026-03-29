@@ -608,17 +608,19 @@ const APL=[
   else checkReady();
 }
 
-// ── PHOTO-REALISTIC GROUND (Poly Haven forest_ground_01, 4K, seamless tileable) ──
-// Poly Haven textures are photoscanned and designed to tile with zero visible seams
+// ── PHOTO-REALISTIC GROUND (Poly Haven forest_ground_01, 8K, seamless tileable) ──
+// 8192×8192 photoscan, 10×10 tiles across 100m = 10m per tile = 819 px/m
 {
   const tex = b64T('groundphotodata', 'image/jpeg');
   if (tex) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(8, 8);
+    tex.repeat.set(10, 10);
     tex.anisotropy = 16;
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
   }
-  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
+  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(100, 100),
     new THREE.MeshBasicMaterial({ map: tex || null, color: tex ? 0xffffff : 0x3a5a2a }));
   gnd.rotation.x = -Math.PI / 2;
   gnd.position.y = -0.05;
