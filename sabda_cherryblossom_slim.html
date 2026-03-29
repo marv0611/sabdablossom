@@ -711,8 +711,8 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
 
   // ── TREE SWAY ──
   for(let i=0;i<treeInstances.length;i++){
-    treeInstances[i].rotation.z=Math.sin(time*0.30+i*1.7)*0.012;
-    treeInstances[i].rotation.x=Math.sin(time*0.24+i*1.1+0.5)*0.006;
+    treeInstances[i].rotation.z=Math.sin(time*0.15+i*1.7)*0.006;
+    treeInstances[i].rotation.x=Math.sin(time*0.12+i*1.1+0.5)*0.003;
   }
 
   // ── RABBITS — hop along circular paths ──
@@ -720,7 +720,7 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
     const rd = rabbitData[i];
     const rp = rd.path;
     // Advance angle along circular path
-    rd.angle += rp.speed * dt;
+    rd.angle += rp.speed * 2 * dt;
     // Position on circle
     const x = Math.cos(rd.angle) * rp.r;
     const z = Math.sin(rd.angle) * rp.r;
