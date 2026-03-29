@@ -608,13 +608,11 @@ const APL=[
   else checkReady();
 }
 
-// ── PHOTO-REALISTIC GROUND (Poly Haven forest floor + grass blend) ──
-// Single textured plane — photo textures read better than 3D grass at grazing angles
+// ── PHOTO-REALISTIC GROUND (Poly Haven forest+grass blend, 4K, no tiling) ──
 {
   const tex = b64T('groundphotodata', 'image/jpeg');
   if (tex) {
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(6, 6);
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.anisotropy = 16;
     tex.colorSpace = THREE.SRGBColorSpace;
   }
@@ -623,7 +621,6 @@ const APL=[
   gnd.rotation.x = -Math.PI / 2;
   gnd.position.y = -0.05;
   contentScene.add(gnd);
-  console.log('Ground: photo texture ' + (tex ? '2048x2048' : 'fallback color'));
 }
 
 
@@ -645,7 +642,7 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   const warmth = Math.pow((Math.sin((time/DURATION)*Math.PI*2)+1)/2, 0.5);
   skySphereMat.uniforms.mixVal.value = 1.0 - warmth;
   skySphereMat.uniforms.tintColor.value.setRGB(0.98+warmth*0.04, 0.88+warmth*0.04, 0.91+(1-warmth)*0.03);
-  skySphere.rotation.y = (time/DURATION)*Math.PI;
+  skySphere.rotation.y = (time/DURATION)*Math.PI*5;
 
   // ── LIGHTING ──
   sun.intensity = 0.75+warmth*0.12;
