@@ -607,80 +607,83 @@ const APL=[
   else checkReady();
 }
 
-// ── PROCEDURAL FOREST FLOOR ──
-// Layered noise: dark earth base + green/brown grass variation + subtle pink petal scatter
+// ── PROCEDURAL FOREST FLOOR (canvas texture) ──
+// Canvas-generated texture guarantees CubeCamera compatibility (lesson 110)
 {
-  const groundShader = new THREE.ShaderMaterial({
-    uniforms: {
-      uFogColor: { value: new THREE.Color(0xd0a0b0) },
-      uFogDensity: { value: 0.012 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      varying float vDist;
-      void main(){
-        vUv = position.xz * 0.15;
-        vec4 wp = modelMatrix * vec4(position,1.0);
-        vDist = length(wp.xz);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-      }`,
-    fragmentShader: `
-      uniform vec3 uFogColor;
-      uniform float uFogDensity;
-      varying vec2 vUv;
-      varying float vDist;
+  const S = 1024;
+  const canvas = document.createElement('canvas');
+  canvas.width = S; canvas.height = S;
+  const ctx = canvas.getContext('2d');
 
-      // Simple hash-based noise
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-      float noise(vec2 p){
-        vec2 i=floor(p), f=fract(p);
-        f=f*f*(3.0-2.0*f);
-        float a=hash(i), b=hash(i+vec2(1,0)), c=hash(i+vec2(0,1)), d=hash(i+vec2(1,1));
-        return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
-      }
-      float fbm(vec2 p){
-        float v=0.0, a=0.5;
-        for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.1; a*=0.5; }
-        return v;
-      }
+  // Seed-based simple noise on canvas
+  function hash(x, y){ let h = Math.sin(x*127.1+y*311.7)*43758.5453; return h - Math.floor(h); }
+  function noise(x, y){
+    const ix=Math.floor(x), iy=Math.floor(y), fx=x-ix, fy=y-iy;
+    const sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy);
+    const a=hash(ix,iy), b=hash(ix+1,iy), c=hash(ix,iy+1), d=hash(ix+1,iy+1);
+    return a+(b-a)*sx + (c-a+(a-b-c+d)*sx)*sy;
+  }
+  function fbm(x, y){
+    let v=0, a=0.5;
+    for(let i=0;i<5;i++){ v+=a*noise(x,y); x*=2.1; y*=2.1; a*=0.5; }
+    return v;
+  }
 
-      void main(){
-        // Base earth tones
-        vec3 darkEarth = vec3(0.18, 0.12, 0.08);
-        vec3 midBrown  = vec3(0.28, 0.20, 0.12);
-        vec3 grassGreen = vec3(0.15, 0.22, 0.08);
-        vec3 dryGrass  = vec3(0.30, 0.28, 0.14);
-        vec3 petalPink = vec3(0.55, 0.30, 0.35);
+  const imgData = ctx.createImageData(S, S);
+  const d = imgData.data;
+  for(let py=0; py<S; py++) for(let px=0; px<S; px++){
+    const u = px/S*8, v = py/S*8;
+    const n1 = fbm(u, v);
+    const n2 = fbm(u*2.5+5.3, v*2.5+3.7);
+    const n3 = fbm(u*6+11.7, v*6+9.2);
+    const n4 = noise(u*12+7.1, v*12+2.3);
 
-        // Multi-scale noise layers
-        float n1 = fbm(vUv * 3.0);           // large patches
-        float n2 = fbm(vUv * 8.0 + 5.3);     // medium detail
-        float n3 = fbm(vUv * 20.0 + 11.7);   // fine grain
-        float n4 = noise(vUv * 40.0 + 7.1);   // tiny specks
+    // Earth base
+    let r = 0.18 + n1*0.15;
+    let g = 0.13 + n1*0.10;
+    let b = 0.08 + n1*0.06;
 
-        // Mix earth and grass
-        vec3 col = mix(darkEarth, midBrown, n1);
-        col = mix(col, grassGreen, smoothstep(0.35, 0.65, n2) * 0.6);
-        col = mix(col, dryGrass, smoothstep(0.4, 0.7, n3) * 0.4);
+    // Green grass patches
+    const grassMix = Math.max(0, Math.min(1, (n2-0.35)*3.3)) * 0.55;
+    r = r*(1-grassMix) + 0.14*grassMix;
+    g = g*(1-grassMix) + 0.24*grassMix;
+    b = b*(1-grassMix) + 0.08*grassMix;
 
-        // Scattered pink petals on ground
-        float petalMask = smoothstep(0.72, 0.78, n4) * smoothstep(0.5, 0.7, n2);
-        col = mix(col, petalPink, petalMask * 0.5);
+    // Dry grass detail
+    const dryMix = Math.max(0, Math.min(1, (n3-0.4)*3.3)) * 0.35;
+    r = r*(1-dryMix) + 0.32*dryMix;
+    g = g*(1-dryMix) + 0.28*dryMix;
+    b = b*(1-dryMix) + 0.14*dryMix;
 
-        // Fine grain variation
-        col *= 0.85 + 0.3 * n3;
+    // Pink petal specks
+    if(n4 > 0.72 && n2 > 0.5){
+      const pm = (n4-0.72)*6 * 0.45;
+      r = r*(1-pm) + 0.58*pm;
+      g = g*(1-pm) + 0.32*pm;
+      b = b*(1-pm) + 0.38*pm;
+    }
 
-        // Fog blend — fade to fog color with distance
-        float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vDist * vDist);
-        col = mix(col, uFogColor, fogF);
+    // Fine grain brightness variation
+    const grain = 0.85 + 0.3*n3;
+    r *= grain; g *= grain; b *= grain;
 
-        gl_FragColor = vec4(col, 1.0);
-      }`,
-  });
-  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(200, 200, 1, 1), groundShader);
+    const idx = (py*S+px)*4;
+    d[idx]   = Math.min(255, r*255)|0;
+    d[idx+1] = Math.min(255, g*255)|0;
+    d[idx+2] = Math.min(255, b*255)|0;
+    d[idx+3] = 255;
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(6, 6);
+  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
+    new THREE.MeshBasicMaterial({ map: tex }));
   gnd.rotation.x = -Math.PI / 2;
   gnd.position.y = -0.08;
   contentScene.add(gnd);
+  console.log('Ground: procedural forest floor texture ' + S + 'x' + S);
 }
 
 
