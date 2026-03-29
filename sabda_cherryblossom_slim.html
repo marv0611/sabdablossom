@@ -608,32 +608,27 @@ const APL=[
   else checkReady();
 }
 
-// ── 3D GRASS GROUND (realtime_grass.glb tiles) ──
-// Near/mid field: tiled 3D grass patches for realism
-// Far field: procedural canvas texture fading into fog
+// ── 3D GRASS GROUND (simple_grass_chunks.glb tiles) ──
+// 8 meshes per clone = GPU-friendly. Model is ~6500m wide, scale 0.003 = ~20m.
 {
   const url = b64Blob('grassdata');
   if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url);
     const base = gltf.scene;
-    const bbox = new THREE.Box3().setFromObject(base);
-    const bsize = bbox.getSize(new THREE.Vector3());
-    // Grass patch is ~2.6m wide, scale up to ~5m tiles for coverage
-    const tileScale = 2.0;
-    const tileSpacing = bsize.x * tileScale * 0.92; // slight overlap to hide seams
+    const tileScale = 0.003;
+    const tileSpacing = 18; // ~20m tiles with slight overlap
     let n = 0;
-    // Tile grid covering ±30m around viewer
-    for(let gx = -6; gx <= 6; gx++) for(let gz = -6; gz <= 6; gz++){
+    for(let gx = -2; gx <= 2; gx++) for(let gz = -2; gz <= 2; gz++){
       const dist = Math.sqrt(gx*gx + gz*gz);
-      if(dist > 7) continue; // circular coverage ~30m radius
+      if(dist > 2.8) continue;
       const inst = base.clone();
       inst.scale.set(tileScale, tileScale, tileScale);
-      inst.position.set(gx * tileSpacing, -0.05, gz * tileSpacing);
-      inst.rotation.y = (Math.abs(gx*7 + gz*13) % 4) * Math.PI * 0.5 + (gx*gz*0.3); // varied rotation
+      inst.position.set(gx * tileSpacing, 0.0, gz * tileSpacing);
+      inst.rotation.y = (Math.abs(gx*3 + gz*7) % 4) * Math.PI * 0.5;
       inst.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
       contentScene.add(inst);
       n++;
     }
-    console.log('Grass: ' + n + ' tiles, spacing ' + tileSpacing.toFixed(1) + 'm');
+    console.log('Grass: ' + n + ' tiles at scale ' + tileScale);
     checkReady();
   }, undefined, (e) => { console.error('Grass err:', e); checkReady(); });
   else checkReady();
