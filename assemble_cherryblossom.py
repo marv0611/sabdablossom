@@ -14,6 +14,7 @@ assets = {
     'treedata':         'assets_cherryblossom/treedata.b64',
     'animpetaldata':    'assets_cherryblossom/animpetaldata.b64',
     'groundpetaldata':  'assets_cherryblossom/groundpetaldata.b64',
+    'grassdata':        'assets_cherryblossom/grassdata.b64',
 }
 
 for aid, b64_path in assets.items():
