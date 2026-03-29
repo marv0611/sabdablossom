@@ -31,6 +31,7 @@ canvas{position:absolute;top:0;left:0}
 <script id="treedata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="animpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="groundpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="mysticaltreedata" type="text/plain">ASSET_PLACEHOLDER</script>
 
 <script type="importmap">{"imports":{
   "three":"https://unpkg.com/three@0.162.0/build/three.module.js",
@@ -506,7 +507,7 @@ contentScene.add(godRayGroup);
 // ═══════════════════════════════════════════════════════
 const gltfLoader = new GLTFLoader();
 let readyCount = 0;
-const TOTAL_ASSETS = 3;
+const TOTAL_ASSETS = 4;
 function checkReady() {
   if (++readyCount >= TOTAL_ASSETS) {
     document.getElementById('loading').classList.add('done');
@@ -526,37 +527,76 @@ setTimeout(() => { if (!window.SABDA_READY) {
 // Distance from viewer: 6-8m sideways, stretching into fog
 const treeInstances = [];
 const TREE_PLACEMENTS = [
-  // Left row (X = -7)
-  {x: -7, z: -12, scale: 1.0, rotY: 0.3},
-  {x: -6, z:  -4, scale: 0.9, rotY: 1.8},
-  {x: -7, z:   4, scale: 1.1, rotY: 3.2},
-  {x: -6, z:  12, scale: 0.95, rotY: 0.9},
-  // Right row (X = +7)
-  {x:  7, z:  -8, scale: 1.05, rotY: 2.1},
-  {x:  6, z:   0, scale: 0.85, rotY: 4.0},
-  {x:  7, z:   8, scale: 1.0, rotY: 1.2},
-  // Distant trees (fade into fog)
-  {x: -5, z:  22, scale: 0.9, rotY: 0.5},
-  {x:  5, z:  20, scale: 0.95, rotY: 2.7},
-  {x: -8, z: -22, scale: 1.0, rotY: 3.8},
-  {x:  8, z: -20, scale: 0.9, rotY: 1.0},
+  // Left row (X = -7) — alternating cherry / mystical
+  {x: -7, z: -12, scale: 1.0, rotY: 0.3, type: 'cherry'},
+  {x: -6, z:  -4, scale: 0.9, rotY: 1.8, type: 'mystical'},
+  {x: -7, z:   4, scale: 1.1, rotY: 3.2, type: 'cherry'},
+  {x: -6, z:  12, scale: 0.95, rotY: 0.9, type: 'mystical'},
+  // Right row (X = +7) — alternating mystical / cherry
+  {x:  7, z:  -8, scale: 1.05, rotY: 2.1, type: 'mystical'},
+  {x:  6, z:   0, scale: 0.85, rotY: 4.0, type: 'cherry'},
+  {x:  7, z:   8, scale: 1.0, rotY: 1.2, type: 'mystical'},
+  // Distant trees (fade into fog) — mixed
+  {x: -5, z:  22, scale: 0.9, rotY: 0.5, type: 'cherry'},
+  {x:  5, z:  20, scale: 0.95, rotY: 2.7, type: 'mystical'},
+  {x: -8, z: -22, scale: 1.0, rotY: 3.8, type: 'mystical'},
+  {x:  8, z: -20, scale: 0.9, rotY: 1.0, type: 'cherry'},
 ];
 
 {
-  const url = b64Blob('treedata');
-  if (url) gltfLoader.load(url,(gltf)=>{URL.revokeObjectURL(url);const base=gltf.scene;
-    const h=new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3()).y;
-    const bs = 8 / h;  // 8m tall trees — natural sakura height
+  let cherryBase = null, mysticalBase = null;
+  let cherryH = 1, mysticalH = 1;
+  let treesLoaded = 0;
+  function placeAllTrees() {
+    if (++treesLoaded < 2) return;  // wait for both
     for(const pl of TREE_PLACEMENTS){
-      const t=base.clone(); const s=bs*pl.scale; t.scale.set(s,s,s);
-      t.position.set(pl.x, 0, pl.z); t.rotation.y=pl.rotY;
-      t.traverse(c=>{if(c.isMesh){c.castShadow=false;c.receiveShadow=false;}});
-      contentScene.add(t); treeInstances.push(t);
+      const isMystical = pl.type === 'mystical';
+      const base = isMystical ? mysticalBase : cherryBase;
+      if (!base) continue;  // skip if that type failed to load
+      const h = isMystical ? mysticalH : cherryH;
+      const bs = 8 / h;
+      const t = base.clone();
+      const s = bs * pl.scale;
+      t.scale.set(s, s, s);
+      t.position.set(pl.x, 0, pl.z);
+      t.rotation.y = pl.rotY;
+      t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
+      contentScene.add(t);
+      treeInstances.push(t);
     }
-    console.log('Trees: '+TREE_PLACEMENTS.length+', height: '+h.toFixed(1)+' -> 8m');
+    const cCount = TREE_PLACEMENTS.filter(p => p.type === 'cherry').length;
+    const mCount = TREE_PLACEMENTS.filter(p => p.type === 'mystical').length;
+    console.log('Trees: ' + cCount + ' cherry + ' + mCount + ' mystical = ' + TREE_PLACEMENTS.length);
+  }
+
+  // Load cherry blossom trees
+  const url1 = b64Blob('treedata');
+  if (url1) gltfLoader.load(url1, (gltf) => {
+    URL.revokeObjectURL(url1);
+    cherryBase = gltf.scene;
+    cherryH = new THREE.Box3().setFromObject(cherryBase).getSize(new THREE.Vector3()).y;
+    console.log('Cherry tree loaded, height: ' + cherryH.toFixed(1) + ' -> 8m');
+    placeAllTrees();
     checkReady();
-  },undefined,(e)=>{console.error('Tree err:',e);checkReady();});
-  else checkReady();
+  }, undefined, (e) => { console.error('Cherry tree err:', e); placeAllTrees(); checkReady(); });
+  else { placeAllTrees(); checkReady(); }
+
+  // Load mystical trees
+  const url2 = b64Blob('mysticaltreedata');
+  if (url2) gltfLoader.load(url2, (gltf) => {
+    URL.revokeObjectURL(url2);
+    mysticalBase = gltf.scene;
+    mysticalH = new THREE.Box3().setFromObject(mysticalBase).getSize(new THREE.Vector3()).y;
+    // Reduce metallic for wellness scene — original is 0.36, too shiny
+    mysticalBase.traverse(c => { if(c.isMesh && c.material){
+      c.material.metalness = 0.05;
+      c.material.roughness = 0.8;
+    }});
+    console.log('Mystical tree loaded, height: ' + mysticalH.toFixed(1) + ' -> 8m');
+    placeAllTrees();
+    checkReady();
+  }, undefined, (e) => { console.error('Mystical tree err:', e); placeAllTrees(); checkReady(); });
+  else { placeAllTrees(); checkReady(); }
 }
 
 // ── ANIMATED FALLING PETALS ──

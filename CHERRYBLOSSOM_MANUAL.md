@@ -19,19 +19,19 @@ This manual supplements the main SABDA Manual v12. The projection pipeline, room
 
 ---
 
-## Current State (v6)
+## Current State (v7)
 
 ### What Works
 - Dual-sky crossfade (citrus afternoon + sunflower dramatic clouds)
-- Cherry blossom trees in grove layout (2 parallel rows, 11 instances)
-- Animated falling petals (rigged GLB, 12.5s loop, 10 instances staggered)
+- Cherry blossom trees AND mystical trees mixed in grove layout (2 parallel rows, 11 instances: 6 cherry + 5 mystical, alternating)
+- Animated falling petals (rigged GLB, 12.5s loop, 12 instances staggered)
 - Ground petal carpet (16m×16m tiles, 7×7 grid)
 - Pink fog, god rays, breathing warmth cycle
 - 360° room viewer (R key), projector strip views (P key)
 - Guide overlays (D key), speed controls (Y=5×, T=30×)
 
 ### What Needs Work (Next Session)
-- Add mystical-x-tree-ii.glb as second tree type mixed into grove
+- Preview in Chrome — verify mixed tree grove looks natural
 - Tune tree distances and heights after viewing in room
 - Tune fog density — may need adjustment for projector
 - Tune sky tint — current pink tint may need warming
@@ -74,7 +74,7 @@ The user's ground petal GLB (`not_animated_ground_Cherry_blossom_petals_light.gl
 | Cherry blossom trees | treedata.b64 | 23.0MB | 290,975 | 3 tree models (bark+foliage), 4 textures, 2 materials |
 | Animated petals | animpetaldata.b64 | 6.1MB | 1,552 | Rigged skeletal, 100 bones, 12.5s loop, 300 channels |
 | Ground petals | groundpetaldata.b64 | 5.0MB | 9,990 | Static 16m×16m scatter, 3 textures |
-| Mystical tree | NOT YET ADDED | ~?MB | ? | Second tree type for grove variety — upload next session |
+| Mystical tree | mysticaltreedata.b64 | 18.0MB | 249,092 | 4 meshes, 1 material, 2048² texture, static — metalness reduced to 0.05 |
 
 ### Assets NOT Used
 - `cherry_blossoms.glb` (20MB, 627 static petals, 363K verts) — too heavy, no animation
@@ -161,6 +161,9 @@ Dense fog (0.018) hides buildings but also hides trees beyond 15m. For a grove w
 ### CB-15: Assembly script must match HTML script tag IDs exactly
 When switching from single sky (`skydata`) to dual sky (`skydata_a`, `skydata_b`), the assembly script must be updated simultaneously. A mismatch between `<script id="skydata_a">ASSET_PLACEHOLDER</script>` in HTML and `'skydata': 'skydata.b64'` in the assembly script means the placeholder is never replaced. **After any asset change, verify: (1) HTML script tag IDs, (2) assembly script keys, (3) b64Blob/b64T call arguments all use the same ID strings.**
 
+### CB-16: Multi-type GLB loading needs a counter gate, not Promise.all
+When loading two GLBs that both feed into the same placement loop, you can't use `Promise.all` because `gltfLoader.load` is callback-based, not Promise-based. Use a counter: `let treesLoaded = 0; function placeAllTrees() { if (++treesLoaded < 2) return; ... }` called from both success AND error callbacks. Both loader paths must call `checkReady()` independently (one `checkReady` per loader = correct count). The placement function runs once both have resolved, using whichever bases loaded successfully.
+
 ---
 
 ## Relevant Lessons from Main Manual
@@ -220,12 +223,11 @@ Output: `output/sabda_top.mp4` + `output/sabda_bottom.mp4` (H.264 CRF 14)
 
 ## Next Session Checklist
 
-1. Upload `mystical-x-tree-ii.glb` — analyze, convert to b64, add as second tree type
-2. Mix both tree types in the grove rows (alternate or randomize)
-3. Preview in Chrome — check perspective, ground coverage, fog, colors
-4. Press R for room view — verify it looks right on 4 walls
-5. Tune as needed based on visual feedback
-6. Verify loop seam (T key for 30× timelapse, watch t=1800→0)
-7. Run full render when satisfied
+1. Assemble and preview in Chrome — verify mixed tree grove looks natural
+2. Press R for room view — verify it looks right on 4 walls
+3. Tune tree scale/spacing if mystical trees look too different from cherry trees
+4. Tune fog density and sky tint based on visual feedback
+5. Verify loop seam (T key for 30× timelapse, watch t=1800→0)
+6. Run full render when satisfied
 
 *Standard: 10/10 or nothing.*
