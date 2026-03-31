@@ -530,22 +530,29 @@ setTimeout(() => { if (!window.SABDA_READY) {
 // Row 2 (right side, X positive): trees at Z = -8, 0, +8
 // Distance from viewer: 6-8m sideways, stretching into fog
 const treeInstances = [];
-// HQ trees: 4 closest positions (2K textures, normal maps — where you see the detail)
+// HQ trees: 4 closest positions spread around viewer (covers all walls)
 const HQ_PLACEMENTS = [
+  // Front-left and front-right (what front wall sees)
   {x: -6.5, z:  -4, scale: 1.00, rotY: 1.8},
   {x:  6.5, z:  -2, scale: 0.95, rotY: 4.0},
+  // Back-left and back-right (what back wall sees)
   {x: -7,   z:   4, scale: 0.90, rotY: 3.2},
   {x:  7,   z:   6, scale: 1.05, rotY: 1.2},
 ];
 
-// Original trees: 6 filling the avenue depth (further positions, fog helps)
+// Original trees: 8 filling depth in all directions
 const ORIG_PLACEMENTS = [
-  {x: -6, z: -12, scale: 0.95, rotY: 0.3},
-  {x:  7, z: -10, scale: 1.00, rotY: 2.1},
+  // Forward avenue
+  {x: -6, z: -10, scale: 0.95, rotY: 0.3},
+  {x:  7, z: -12, scale: 1.00, rotY: 2.1},
+  {x: -5, z: -18, scale: 0.85, rotY: 5.2},
+  // Backward avenue
   {x: -7, z:  12, scale: 1.10, rotY: 0.9},
   {x:  6, z:  14, scale: 0.90, rotY: 3.6},
-  {x: -5, z:  20, scale: 0.85, rotY: 5.2},
-  {x:  5, z: -18, scale: 0.90, rotY: 2.7},
+  {x:  5, z:  20, scale: 0.85, rotY: 2.7},
+  // Side fill (so left/right walls have trees too)
+  {x: -4, z:   0, scale: 0.80, rotY: 4.5},
+  {x:  4, z:  -6, scale: 0.85, rotY: 1.5},
 ];
 
 // Load HQ trees
@@ -728,38 +735,47 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
     treeInstances[i].rotation.x=Math.sin(time*0.12+i*1.1+0.5)*0.003;
   }
 
-  // ── RABBITS — natural foraging pattern ──
-  // Real rabbits: hop 2-4 times (~0.4s each), pause 1-4s to sniff/look around, repeat
+  // ── RABBITS — natural foraging with path wobble ──
   for(let i = 0; i < rabbitData.length; i++){
     const rd = rabbitData[i];
     const rp = rd.path;
 
-    // Each rabbit has its own rhythm — staggered cycle lengths
-    const cycleLen = 4.5 + (i * 1.7) % 3.5; // 4.5-8s per hop-pause cycle
-    const t_in_cycle = ((time + i * 3.1) % cycleLen) / cycleLen; // 0-1 phase
+    // Each rabbit has its own hop-pause rhythm
+    const cycleLen = 5.0 + (i * 1.3) % 4.0;
+    const t_in_cycle = ((time + i * 2.7) % cycleLen) / cycleLen;
 
-    // 0.0-0.55: hopping (accelerate then decelerate, like real hops)
-    // 0.55-1.0: paused (sniffing, ears twitching — just the idle animation)
+    // Hop envelope: smooth acceleration into hops, then pause
     let speedFactor;
-    if (t_in_cycle < 0.55) {
-      // Smooth hop envelope: ease in, sustain, ease out
-      const hopT = t_in_cycle / 0.55;
-      speedFactor = Math.sin(hopT * Math.PI) * 1.2; // peaks mid-hop-sequence
+    if (t_in_cycle < 0.5) {
+      // Hopping: smooth sine, peaks at 0.25
+      speedFactor = Math.sin(t_in_cycle / 0.5 * Math.PI);
     } else {
-      speedFactor = 0; // paused
+      // Paused: nibbling grass, looking around
+      speedFactor = 0;
     }
 
-    rd.angle += rp.speed * 3.5 * speedFactor * dt;
-    const x = Math.cos(rd.angle) * rp.r;
-    const z = Math.sin(rd.angle) * rp.r;
+    // Path wobble: slight radius variation (rabbits don't walk perfect circles)
+    const wobble = Math.sin(time * 0.3 + i * 5.1) * 1.5;
+    const currentR = rp.r + wobble;
 
-    // Vertical bob — only while moving, smooth sine
-    const bob = speedFactor > 0.1 ? Math.abs(Math.sin(time * 7 + i * 2.1)) * 0.01 * rp.scale * 50 : 0;
+    rd.angle += rp.speed * 4 * speedFactor * dt;
+    const x = Math.cos(rd.angle) * currentR;
+    const z = Math.sin(rd.angle) * currentR;
+
+    // Hop bob: quick up-down per hop (0.43s cycle), only while moving
+    let bob = 0;
+    if (speedFactor > 0.15) {
+      const hopT = (time % 0.43) / 0.43;
+      bob = Math.sin(hopT * Math.PI) * 0.08;
+    }
     rd.mesh.position.set(x, bob, z);
-    rd.mesh.rotation.y = rd.angle - Math.PI * 0.5;
 
-    // Animation: play during hops, slow to gentle idle during pause
-    rd.action.timeScale = speedFactor > 0.1 ? 0.6 + speedFactor * 0.4 : 0.08;
+    // Face direction with slight lag (rabbits turn their body gradually)
+    const targetRotY = rd.angle - Math.PI * 0.5;
+    rd.mesh.rotation.y += (targetRotY - rd.mesh.rotation.y) * Math.min(1, dt * 3);
+
+    // Animation: play during hops, very slow idle during pause
+    rd.action.timeScale = speedFactor > 0.15 ? 0.5 + speedFactor * 0.5 : 0.03;
     rabbitMixers[i].update(dt);
   }
 
