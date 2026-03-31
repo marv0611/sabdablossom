@@ -457,13 +457,20 @@ const skySphereMat = new THREE.ShaderMaterial({
     float dither(vec2 co){return fract(sin(dot(co,vec2(12.9898,78.233)))*43758.5453)-0.5;}
     void main(){
       vec3 col = mix(texture2D(texA,vUv).rgb, texture2D(texB,vUv).rgb, mixVal) * tintColor;
+      // Boost saturation for vivid dreamy look (1.25 = 125%)
       float luma = dot(col, vec3(0.299,0.587,0.114));
-      col = mix(vec3(luma), col, 0.65);
-      col = (col-0.5)*0.85+0.5;
-      col = min(col, vec3(0.82));
+      col = mix(vec3(luma), col, 1.25);
+      // Gentle S-curve contrast — dreamy but not flat
+      col = (col-0.5)*1.05+0.5;
+      // Warm pink/gold dreamy shift — push blues toward purple, boost warm tones
+      col.r = col.r * 1.08;
+      col.b = col.b * 0.95 + luma * 0.05;
+      // Higher highlight cap — let the bright clouds glow
+      col = min(col, vec3(0.95));
       // Fade lower hemisphere to fog
       float horizonFade = smoothstep(0.38, 0.46, vUv.y);
-      col = mix(vec3(0.78,0.68,0.72), col, horizonFade);
+      vec3 horizonCol = vec3(0.85, 0.72, 0.78); // warmer pink horizon
+      col = mix(horizonCol, col, horizonFade);
       col = clamp(col, 0.0, 1.0) + dither(gl_FragCoord.xy)/255.0;
       gl_FragColor = vec4(col, 1.0);
     }
@@ -717,7 +724,7 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   // ── SKY CROSSFADE ──
   const warmth = Math.pow((Math.sin((time/DURATION)*Math.PI*2)+1)/2, 0.5);
   skySphereMat.uniforms.mixVal.value = 1.0 - warmth;
-  skySphereMat.uniforms.tintColor.value.setRGB(0.98+warmth*0.04, 0.88+warmth*0.04, 0.91+(1-warmth)*0.03);
+  skySphereMat.uniforms.tintColor.value.setRGB(1.02+warmth*0.06, 0.90+warmth*0.06, 0.92+(1-warmth)*0.04);
   skySphere.rotation.y = (time/DURATION)*Math.PI*3.75;
 
   // ── LIGHTING ──
