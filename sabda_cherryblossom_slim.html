@@ -89,7 +89,7 @@ document.body.appendChild(renderer.domElement);
 // ═══════════════════════════════════════════════════════
 const contentScene = new THREE.Scene();
 
-const CUBE_SIZE = window.__SABDA_PUPPETEER__ ? 4096 : 2048; // 4K for render, 2K for preview
+const CUBE_SIZE = 4096;
 const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_SIZE, {
   generateMipmaps: true,
   minFilter: THREE.LinearMipmapLinearFilter,
@@ -533,12 +533,11 @@ const treeInstances = [];
 // HQ trees: 4 closest, spread around all directions
 const HQ_PLACEMENTS = [
   {x: -10, z:  -5, scale: 0.75, rotY: 1.8},
-  {x:  11, z:   7, scale: 0.72, rotY: 4.5},
 ];
 
 // Original trees: 10 filling depth around full 360°
 const ORIG_PLACEMENTS = [
-  // Close ring (10-12m from viewer) — 8 trees around
+  // Close ring (10-12m) — 8 trees
   {x:  10, z:  -7, scale: 0.90, rotY: 2.1},
   {x: -10, z:   8, scale: 0.85, rotY: 3.2},
   {x:  5,  z: -12, scale: 0.88, rotY: 0.5},
@@ -554,11 +553,6 @@ const ORIG_PLACEMENTS = [
   {x: -7,  z:  18, scale: 0.80, rotY: 2.7},
   {x:  11, z:  -3, scale: 0.78, rotY: 1.9},
   {x: -11, z:   3, scale: 0.76, rotY: 4.4},
-  // Far ring (22-25m) — 4 trees fading into fog
-  {x: -9,  z: -24, scale: 0.72, rotY: 4.1},
-  {x:  9,  z:  24, scale: 0.72, rotY: 0.9},
-  {x:  4,  z: -24, scale: 0.70, rotY: 2.3},
-  {x: -4,  z:  24, scale: 0.70, rotY: 5.5},
 ];
 
 // Load HQ trees
