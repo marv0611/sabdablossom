@@ -622,17 +622,18 @@ const APL=[
 // Near plane: 4K Poly Haven photoscan, tight tile density where viewer sees detail
 // Far plane: fog-matched color, costs nothing, fills the distance
 {
-  // NEAR: 4K texture, 120m×120m, 12×12 tiles = 10m per tile = 410 px/m
+  // NEAR: 4K texture, 60m×60m, 12×12 tiles = 5m per tile = 820 px/m
   const tex = b64T('groundphotodata', 'image/jpeg');
   if (tex) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(12, 12);
-    tex.anisotropy = 16;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
   }
-  const nearGnd = new THREE.Mesh(new THREE.PlaneGeometry(120, 120),
+  const nearGnd = new THREE.Mesh(new THREE.PlaneGeometry(60, 60),
     new THREE.MeshBasicMaterial({ map: tex || null, color: tex ? 0xffffff : 0x3a5a2a }));
   nearGnd.rotation.x = -Math.PI / 2;
   nearGnd.position.y = -0.04;
