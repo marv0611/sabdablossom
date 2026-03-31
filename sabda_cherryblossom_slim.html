@@ -530,24 +530,30 @@ setTimeout(() => { if (!window.SABDA_READY) {
 // Row 2 (right side, X positive): trees at Z = -8, 0, +8
 // Distance from viewer: 6-8m sideways, stretching into fog
 const treeInstances = [];
-// HQ trees: 4 closest, further from center (X=±8-9, not ±4-6)
+// HQ trees: 4 closest, spread around all directions
 const HQ_PLACEMENTS = [
-  {x: -9, z:  -5, scale: 0.85, rotY: 1.8},
-  {x:  9, z:  -3, scale: 0.80, rotY: 4.0},
-  {x: -8, z:   5, scale: 0.80, rotY: 3.2},
-  {x:  9, z:   7, scale: 0.85, rotY: 1.2},
+  {x: -8, z:  -4, scale: 0.82, rotY: 1.8},   // left-front
+  {x:  8, z:   4, scale: 0.80, rotY: 4.0},   // right-back
+  {x:  2, z: -10, scale: 0.85, rotY: 3.2},   // forward (long wall coverage)
+  {x: -3, z:  10, scale: 0.83, rotY: 1.2},   // backward (long wall coverage)
 ];
 
-// Original trees: 8 filling depth, same wider spacing
+// Original trees: 10 filling depth around full 360°
 const ORIG_PLACEMENTS = [
-  {x: -8, z: -13, scale: 0.95, rotY: 0.3},
-  {x:  8, z: -11, scale: 1.00, rotY: 2.1},
-  {x: -9, z:  13, scale: 1.10, rotY: 0.9},
-  {x:  8, z:  15, scale: 0.90, rotY: 3.6},
-  {x: -7, z:  22, scale: 0.85, rotY: 5.2},
-  {x:  7, z: -20, scale: 0.90, rotY: 2.7},
-  {x: -8, z: -22, scale: 0.85, rotY: 4.1},
-  {x:  8, z:  22, scale: 0.80, rotY: 0.5},
+  // Left-right avenue (short wall coverage)
+  {x: -9, z: -12, scale: 0.95, rotY: 0.3},
+  {x:  9, z: -10, scale: 1.00, rotY: 2.1},
+  {x: -8, z:  14, scale: 1.10, rotY: 0.9},
+  {x:  8, z:  16, scale: 0.90, rotY: 3.6},
+  // Forward trees (left long wall coverage)
+  {x:  4, z: -18, scale: 0.85, rotY: 5.2},
+  {x: -2, z: -16, scale: 0.90, rotY: 2.7},
+  // Backward trees (right long wall coverage)
+  {x: -4, z:  18, scale: 0.85, rotY: 4.1},
+  {x:  3, z:  16, scale: 0.80, rotY: 0.5},
+  // Mid-range diagonal fill
+  {x: -6, z:   0, scale: 0.90, rotY: 3.9},
+  {x:  6, z:  -1, scale: 0.88, rotY: 1.5},
 ];
 
 // Load HQ trees
