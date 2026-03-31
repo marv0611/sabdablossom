@@ -29,6 +29,7 @@ canvas{position:absolute;top:0;left:0}
 <script id="skydata_a" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="skydata_b" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="treedata" type="text/plain">ASSET_PLACEHOLDER</script>
+<script id="treedata_hq" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="animpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="groundpetaldata" type="text/plain">ASSET_PLACEHOLDER</script>
 <script id="groundphotodata" type="text/plain">ASSET_PLACEHOLDER</script>
@@ -510,7 +511,7 @@ contentScene.add(godRayGroup);
 // ═══════════════════════════════════════════════════════
 const gltfLoader = new GLTFLoader();
 let readyCount = 0;
-const TOTAL_ASSETS = 3;
+const TOTAL_ASSETS = 4;
 function checkReady() {
   if (++readyCount >= TOTAL_ASSETS) {
     document.getElementById('loading').classList.add('done');
@@ -529,31 +530,59 @@ setTimeout(() => { if (!window.SABDA_READY) {
 // Row 2 (right side, X positive): trees at Z = -8, 0, +8
 // Distance from viewer: 6-8m sideways, stretching into fog
 const treeInstances = [];
-const TREE_PLACEMENTS = [
-  // Left row (X = -7) — 3 trees
-  {x: -7, z:  -8, scale: 1.05, rotY: 1.8},
-  {x: -7, z:   2, scale: 0.90, rotY: 3.2},
-  {x: -6, z:  12, scale: 1.10, rotY: 0.9},
-  // Right row (X = +7) — 3 trees
-  {x:  7, z:  -6, scale: 1.00, rotY: 2.1},
-  {x:  6, z:   4, scale: 0.85, rotY: 4.0},
-  {x:  7, z:  14, scale: 1.05, rotY: 1.2},
+// HQ trees: 4 hero positions (closest to viewer, 2K textures, normal maps)
+const HQ_PLACEMENTS = [
+  // Left close — the tree you see first when looking left
+  {x: -6.5, z:  -3, scale: 1.00, rotY: 1.8},
+  // Right close — the tree you see first when looking right
+  {x:  6.5, z:   0, scale: 0.95, rotY: 4.2},
+  // Left mid — framing the avenue
+  {x: -7, z:   8, scale: 1.05, rotY: 3.0},
+  // Right mid
+  {x:  7, z:  -8, scale: 0.90, rotY: 0.7},
 ];
 
+// Original trees: 4 depth-fill positions (further away, partially in fog)
+const ORIG_PLACEMENTS = [
+  {x: -6, z:  16, scale: 1.10, rotY: 0.9},
+  {x:  6, z:  14, scale: 1.00, rotY: 2.1},
+  {x: -5, z: -16, scale: 0.90, rotY: 3.8},
+  {x:  5, z: -14, scale: 0.85, rotY: 5.2},
+];
+
+// Load HQ trees (2K textures, normal maps, 746K verts each)
 {
-  const url = b64Blob('treedata');
+  const url = b64Blob('treedata_hq');
   if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url); const base = gltf.scene;
     const h = new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3()).y;
-    const bs = 8 / h;  // 8m tall trees — natural sakura height
-    for(const pl of TREE_PLACEMENTS){
+    const bs = 8 / h;
+    for(const pl of HQ_PLACEMENTS){
       const t = base.clone(); const s = bs * pl.scale; t.scale.set(s, s, s);
       t.position.set(pl.x, -0.3, pl.z); t.rotation.y = pl.rotY;
       t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
       contentScene.add(t); treeInstances.push(t);
     }
-    console.log('Trees: ' + TREE_PLACEMENTS.length + ', height: ' + h.toFixed(1) + ' -> 8m');
+    console.log('HQ Trees: ' + HQ_PLACEMENTS.length + ', height: ' + h.toFixed(1) + ' -> 8m');
     checkReady();
-  }, undefined, (e) => { console.error('Tree err:', e); checkReady(); });
+  }, undefined, (e) => { console.error('HQ Tree err:', e); checkReady(); });
+  else checkReady();
+}
+
+// Load original trees (1K textures, 291K verts each — lighter, for depth)
+{
+  const url = b64Blob('treedata');
+  if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url); const base = gltf.scene;
+    const h = new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3()).y;
+    const bs = 8 / h;
+    for(const pl of ORIG_PLACEMENTS){
+      const t = base.clone(); const s = bs * pl.scale; t.scale.set(s, s, s);
+      t.position.set(pl.x, -0.3, pl.z); t.rotation.y = pl.rotY;
+      t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
+      contentScene.add(t); treeInstances.push(t);
+    }
+    console.log('Orig Trees: ' + ORIG_PLACEMENTS.length + ', height: ' + h.toFixed(1) + ' -> 8m');
+    checkReady();
+  }, undefined, (e) => { console.error('Orig Tree err:', e); checkReady(); });
   else checkReady();
 }
 
