@@ -718,7 +718,7 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   const warmth = Math.pow((Math.sin((time/DURATION)*Math.PI*2)+1)/2, 0.5);
   skySphereMat.uniforms.mixVal.value = 1.0 - warmth;
   skySphereMat.uniforms.tintColor.value.setRGB(0.98+warmth*0.04, 0.88+warmth*0.04, 0.91+(1-warmth)*0.03);
-  skySphere.rotation.y = (time/DURATION)*Math.PI*7.5;
+  skySphere.rotation.y = (time/DURATION)*Math.PI*3.75;
 
   // ── LIGHTING ──
   sun.intensity = 0.75+warmth*0.12;
