@@ -88,7 +88,7 @@ document.body.appendChild(renderer.domElement);
 // ═══════════════════════════════════════════════════════
 const contentScene = new THREE.Scene();
 
-const CUBE_SIZE = 4096;
+const CUBE_SIZE = window.__SABDA_PUPPETEER__ ? 4096 : 2048; // 4K for render, 2K for preview
 const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_SIZE, {
   generateMipmaps: true,
   minFilter: THREE.LinearMipmapLinearFilter,
@@ -656,7 +656,7 @@ const RABBIT_PATHS = [
       action.timeScale = 0.7 + (i % 3) * 0.15;
 
       rabbitMixers.push(mixer);
-      rabbitData.push({ mesh: clone, path: rp, angle: rp.angle });
+      rabbitData.push({ mesh: clone, path: rp, angle: rp.angle, action: action });
     }
     console.log('Rabbits: ' + RABBIT_PATHS.length + ' on circular paths');
     checkReady();
@@ -701,40 +701,38 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
     treeInstances[i].rotation.x=Math.sin(time*0.12+i*1.1+0.5)*0.003;
   }
 
-  // ── RABBITS — natural hop-pause-hop pattern ──
-  // Real rabbits: ~0.6m/s, bounding gait, hop 2-4 times then pause 1-3s
+  // ── RABBITS — natural foraging pattern ──
+  // Real rabbits: hop 2-4 times (~0.4s each), pause 1-4s to sniff/look around, repeat
   for(let i = 0; i < rabbitData.length; i++){
     const rd = rabbitData[i];
     const rp = rd.path;
 
-    // Hop-pause cycle: rabbits hop for a few seconds then pause
-    // Use sin wave to create natural speed variation (fast-slow-fast-pause)
-    const cycleTime = 6.0 + (i % 3) * 2.0; // 6-10 second cycles per rabbit
-    const phase = (time / cycleTime + i * 0.37) % 1.0;
-    // Shape: hop actively for 60% of cycle, pause for 40%
-    let speedMult;
-    if (phase < 0.6) {
-      // Hopping phase — sinusoidal bursts (hop-hop-hop rhythm)
-      const hopPhase = phase / 0.6;
-      speedMult = 0.5 + 0.8 * Math.abs(Math.sin(hopPhase * Math.PI * 3));
+    // Each rabbit has its own rhythm — staggered cycle lengths
+    const cycleLen = 4.5 + (i * 1.7) % 3.5; // 4.5-8s per hop-pause cycle
+    const t_in_cycle = ((time + i * 3.1) % cycleLen) / cycleLen; // 0-1 phase
+
+    // 0.0-0.55: hopping (accelerate then decelerate, like real hops)
+    // 0.55-1.0: paused (sniffing, ears twitching — just the idle animation)
+    let speedFactor;
+    if (t_in_cycle < 0.55) {
+      // Smooth hop envelope: ease in, sustain, ease out
+      const hopT = t_in_cycle / 0.55;
+      speedFactor = Math.sin(hopT * Math.PI) * 1.2; // peaks mid-hop-sequence
     } else {
-      // Pause phase — nearly stopped, slight drift
-      speedMult = 0.05;
+      speedFactor = 0; // paused
     }
 
-    // Base speed gives ~0.6 m/s at the path radius
-    rd.angle += rp.speed * 3 * speedMult * dt;
-
+    rd.angle += rp.speed * 3.5 * speedFactor * dt;
     const x = Math.cos(rd.angle) * rp.r;
     const z = Math.sin(rd.angle) * rp.r;
 
-    // Vertical bob only during active hopping
-    const hopBob = speedMult > 0.2 ? Math.abs(Math.sin(time * 8 + i * 2.3)) * 0.015 * rp.scale * 70 : 0;
-    rd.mesh.position.set(x, hopBob, z);
+    // Vertical bob — only while moving, smooth sine
+    const bob = speedFactor > 0.1 ? Math.abs(Math.sin(time * 7 + i * 2.1)) * 0.01 * rp.scale * 50 : 0;
+    rd.mesh.position.set(x, bob, z);
     rd.mesh.rotation.y = rd.angle - Math.PI * 0.5;
 
-    // Slow down animation playback during pause
-    rabbitMixers[i].timeScale = speedMult > 0.2 ? 0.8 : 0.05;
+    // Animation: play during hops, slow to gentle idle during pause
+    rd.action.timeScale = speedFactor > 0.1 ? 0.6 + speedFactor * 0.4 : 0.08;
     rabbitMixers[i].update(dt);
   }
 
