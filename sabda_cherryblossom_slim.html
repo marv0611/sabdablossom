@@ -532,27 +532,27 @@ setTimeout(() => { if (!window.SABDA_READY) {
 const treeInstances = [];
 // HQ trees: 4 closest, spread around all directions
 const HQ_PLACEMENTS = [
-  {x: -7, z:  -3, scale: 0.82, rotY: 1.8},
-  {x:  8, z:   5, scale: 0.78, rotY: 4.5},
+  {x: -10, z:  -5, scale: 0.75, rotY: 1.8},
+  {x:  11, z:   7, scale: 0.72, rotY: 4.5},
 ];
 
 // Original trees: 10 filling depth around full 360°
 const ORIG_PLACEMENTS = [
-  // Close ring — all directions
-  {x:  7, z:  -5, scale: 1.00, rotY: 2.1},
-  {x: -8, z:   6, scale: 0.90, rotY: 3.2},
-  {x:  3, z:  -9, scale: 0.95, rotY: 0.5},
-  {x: -3, z:   9, scale: 1.05, rotY: 4.8},
-  {x: -6, z:  -1, scale: 0.92, rotY: 3.9},
-  {x:  6, z:   1, scale: 0.88, rotY: 1.5},
-  // Mid ring
-  {x: -9, z: -12, scale: 0.95, rotY: 0.3},
-  {x:  9, z:  13, scale: 0.90, rotY: 3.6},
-  {x:  5, z: -15, scale: 0.85, rotY: 5.2},
-  {x: -5, z:  15, scale: 0.88, rotY: 2.7},
-  // Far ring (fog fading)
-  {x: -7, z: -20, scale: 0.80, rotY: 4.1},
-  {x:  7, z:  20, scale: 0.80, rotY: 0.9},
+  // Close ring (10-12m from viewer)
+  {x:  10, z:  -7, scale: 0.90, rotY: 2.1},
+  {x: -10, z:   8, scale: 0.85, rotY: 3.2},
+  {x:  5,  z: -12, scale: 0.88, rotY: 0.5},
+  {x: -5,  z:  12, scale: 0.92, rotY: 4.8},
+  {x: -9,  z:  -2, scale: 0.82, rotY: 3.9},
+  {x:  9,  z:   2, scale: 0.82, rotY: 1.5},
+  // Mid ring (15-18m)
+  {x: -11, z: -15, scale: 0.85, rotY: 0.3},
+  {x:  11, z:  16, scale: 0.80, rotY: 3.6},
+  {x:  7,  z: -18, scale: 0.78, rotY: 5.2},
+  {x: -7,  z:  18, scale: 0.80, rotY: 2.7},
+  // Far ring (22-25m, fading into fog)
+  {x: -9,  z: -24, scale: 0.72, rotY: 4.1},
+  {x:  9,  z:  24, scale: 0.72, rotY: 0.9},
 ];
 
 // Load HQ trees
