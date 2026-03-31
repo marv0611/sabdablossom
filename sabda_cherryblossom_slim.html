@@ -476,11 +476,11 @@ contentScene.background = new THREE.Color(0xd0a8b8);
 contentScene.environment = skyTexA;
 
 // ── LIGHTING ──
-const ambient = new THREE.AmbientLight(0xc89898, 0.50);
+const ambient = new THREE.AmbientLight(0xc89898, 0.30);
 contentScene.add(ambient);
 const hemi = new THREE.HemisphereLight(0xffd0b0, 0x3a2030, 0.45);
 contentScene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffe0c0, 0.85);
+const sun = new THREE.DirectionalLight(0xffe0c0, 1.10);
 sun.position.set(8, 12, -10); contentScene.add(sun);
 const rim = new THREE.DirectionalLight(0xffb0c0, 0.25);
 rim.position.set(-10, 6, 8); contentScene.add(rim);
@@ -488,7 +488,7 @@ const fill = new THREE.DirectionalLight(0xc0a0b8, 0.20);
 fill.position.set(0, 4, 12); contentScene.add(fill);
 
 // ── FOG ──
-contentScene.fog = new THREE.FogExp2(0xd0a0b0, 0.012);
+contentScene.fog = new THREE.FogExp2(0xd0a0b0, 0.018);
 
 // ── GOD RAYS (subtle) ──
 const godRayGroup = new THREE.Group();
@@ -532,28 +532,27 @@ setTimeout(() => { if (!window.SABDA_READY) {
 const treeInstances = [];
 // HQ trees: 4 closest, spread around all directions
 const HQ_PLACEMENTS = [
-  {x: -8, z:  -4, scale: 0.82, rotY: 1.8},   // left-front
-  {x:  8, z:   4, scale: 0.80, rotY: 4.0},   // right-back
-  {x:  2, z: -10, scale: 0.85, rotY: 3.2},   // forward (long wall coverage)
-  {x: -3, z:  10, scale: 0.83, rotY: 1.2},   // backward (long wall coverage)
+  {x: -7, z:  -3, scale: 0.82, rotY: 1.8},
+  {x:  8, z:   5, scale: 0.78, rotY: 4.5},
 ];
 
 // Original trees: 10 filling depth around full 360°
 const ORIG_PLACEMENTS = [
-  // Left-right avenue (short wall coverage)
+  // Close ring — all directions
+  {x:  7, z:  -5, scale: 1.00, rotY: 2.1},
+  {x: -8, z:   6, scale: 0.90, rotY: 3.2},
+  {x:  3, z:  -9, scale: 0.95, rotY: 0.5},
+  {x: -3, z:   9, scale: 1.05, rotY: 4.8},
+  {x: -6, z:  -1, scale: 0.92, rotY: 3.9},
+  {x:  6, z:   1, scale: 0.88, rotY: 1.5},
+  // Mid ring
   {x: -9, z: -12, scale: 0.95, rotY: 0.3},
-  {x:  9, z: -10, scale: 1.00, rotY: 2.1},
-  {x: -8, z:  14, scale: 1.10, rotY: 0.9},
-  {x:  8, z:  16, scale: 0.90, rotY: 3.6},
-  // Forward trees (left long wall coverage)
-  {x:  4, z: -18, scale: 0.85, rotY: 5.2},
-  {x: -2, z: -16, scale: 0.90, rotY: 2.7},
-  // Backward trees (right long wall coverage)
-  {x: -4, z:  18, scale: 0.85, rotY: 4.1},
-  {x:  3, z:  16, scale: 0.80, rotY: 0.5},
-  // Mid-range diagonal fill
-  {x: -6, z:   0, scale: 0.90, rotY: 3.9},
-  {x:  6, z:  -1, scale: 0.88, rotY: 1.5},
+  {x:  9, z:  13, scale: 0.90, rotY: 3.6},
+  {x:  5, z: -15, scale: 0.85, rotY: 5.2},
+  {x: -5, z:  15, scale: 0.88, rotY: 2.7},
+  // Far ring (fog fading)
+  {x: -7, z: -20, scale: 0.80, rotY: 4.1},
+  {x:  7, z:  20, scale: 0.80, rotY: 0.9},
 ];
 
 // Load HQ trees
