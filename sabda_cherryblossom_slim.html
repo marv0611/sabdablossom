@@ -547,7 +547,7 @@ const TREE_PLACEMENTS = [
     const bs = 8 / h;  // 8m tall trees — natural sakura height
     for(const pl of TREE_PLACEMENTS){
       const t = base.clone(); const s = bs * pl.scale; t.scale.set(s, s, s);
-      t.position.set(pl.x, 0, pl.z); t.rotation.y = pl.rotY;
+      t.position.set(pl.x, -0.3, pl.z); t.rotation.y = pl.rotY;
       t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
       contentScene.add(t); treeInstances.push(t);
     }
@@ -683,7 +683,7 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
   const warmth = Math.pow((Math.sin((time/DURATION)*Math.PI*2)+1)/2, 0.5);
   skySphereMat.uniforms.mixVal.value = 1.0 - warmth;
   skySphereMat.uniforms.tintColor.value.setRGB(0.98+warmth*0.04, 0.88+warmth*0.04, 0.91+(1-warmth)*0.03);
-  skySphere.rotation.y = (time/DURATION)*Math.PI*10;
+  skySphere.rotation.y = (time/DURATION)*Math.PI*7.5;
 
   // ── LIGHTING ──
   sun.intensity = 0.75+warmth*0.12;
@@ -701,22 +701,40 @@ window.SABDA_RENDER_FRAME = function(simTime, speedMultiplier) {
     treeInstances[i].rotation.x=Math.sin(time*0.12+i*1.1+0.5)*0.003;
   }
 
-  // ── RABBITS — hop along circular paths ──
+  // ── RABBITS — natural hop-pause-hop pattern ──
+  // Real rabbits: ~0.6m/s, bounding gait, hop 2-4 times then pause 1-3s
   for(let i = 0; i < rabbitData.length; i++){
     const rd = rabbitData[i];
     const rp = rd.path;
-    // Advance angle along circular path
-    rd.angle += rp.speed * 5 * dt;
-    // Position on circle
+
+    // Hop-pause cycle: rabbits hop for a few seconds then pause
+    // Use sin wave to create natural speed variation (fast-slow-fast-pause)
+    const cycleTime = 6.0 + (i % 3) * 2.0; // 6-10 second cycles per rabbit
+    const phase = (time / cycleTime + i * 0.37) % 1.0;
+    // Shape: hop actively for 60% of cycle, pause for 40%
+    let speedMult;
+    if (phase < 0.6) {
+      // Hopping phase — sinusoidal bursts (hop-hop-hop rhythm)
+      const hopPhase = phase / 0.6;
+      speedMult = 0.5 + 0.8 * Math.abs(Math.sin(hopPhase * Math.PI * 3));
+    } else {
+      // Pause phase — nearly stopped, slight drift
+      speedMult = 0.05;
+    }
+
+    // Base speed gives ~0.6 m/s at the path radius
+    rd.angle += rp.speed * 3 * speedMult * dt;
+
     const x = Math.cos(rd.angle) * rp.r;
     const z = Math.sin(rd.angle) * rp.r;
-    // Gentle vertical bob synced to hop (subtle, ~2cm)
-    const hopPhase = (time * (0.7 + (i%3)*0.15) / 0.43) * Math.PI * 2;
-    const yBob = Math.abs(Math.sin(hopPhase)) * 0.02 * rp.scale * 70;
-    rd.mesh.position.set(x, yBob, z);
-    // Face direction of travel (tangent to circle)
+
+    // Vertical bob only during active hopping
+    const hopBob = speedMult > 0.2 ? Math.abs(Math.sin(time * 8 + i * 2.3)) * 0.015 * rp.scale * 70 : 0;
+    rd.mesh.position.set(x, hopBob, z);
     rd.mesh.rotation.y = rd.angle - Math.PI * 0.5;
-    // Update animation mixer
+
+    // Slow down animation playback during pause
+    rabbitMixers[i].timeScale = speedMult > 0.2 ? 0.8 : 0.05;
     rabbitMixers[i].update(dt);
   }
 
