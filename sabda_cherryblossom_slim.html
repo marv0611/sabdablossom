@@ -530,27 +530,25 @@ setTimeout(() => { if (!window.SABDA_READY) {
 // Row 2 (right side, X positive): trees at Z = -8, 0, +8
 // Distance from viewer: 6-8m sideways, stretching into fog
 const treeInstances = [];
-// HQ trees: 4 hero positions (closest to viewer, 2K textures, normal maps)
+// HQ trees: 4 closest positions (2K textures, normal maps — where you see the detail)
 const HQ_PLACEMENTS = [
-  // Left close — the tree you see first when looking left
-  {x: -6.5, z:  -3, scale: 1.00, rotY: 1.8},
-  // Right close — the tree you see first when looking right
-  {x:  6.5, z:   0, scale: 0.95, rotY: 4.2},
-  // Left mid — framing the avenue
-  {x: -7, z:   8, scale: 1.05, rotY: 3.0},
-  // Right mid
-  {x:  7, z:  -8, scale: 0.90, rotY: 0.7},
+  {x: -6.5, z:  -4, scale: 1.00, rotY: 1.8},
+  {x:  6.5, z:  -2, scale: 0.95, rotY: 4.0},
+  {x: -7,   z:   4, scale: 0.90, rotY: 3.2},
+  {x:  7,   z:   6, scale: 1.05, rotY: 1.2},
 ];
 
-// Original trees: 4 depth-fill positions (further away, partially in fog)
+// Original trees: 6 filling the avenue depth (further positions, fog helps)
 const ORIG_PLACEMENTS = [
-  {x: -6, z:  16, scale: 1.10, rotY: 0.9},
-  {x:  6, z:  14, scale: 1.00, rotY: 2.1},
-  {x: -5, z: -16, scale: 0.90, rotY: 3.8},
-  {x:  5, z: -14, scale: 0.85, rotY: 5.2},
+  {x: -6, z: -12, scale: 0.95, rotY: 0.3},
+  {x:  7, z: -10, scale: 1.00, rotY: 2.1},
+  {x: -7, z:  12, scale: 1.10, rotY: 0.9},
+  {x:  6, z:  14, scale: 0.90, rotY: 3.6},
+  {x: -5, z:  20, scale: 0.85, rotY: 5.2},
+  {x:  5, z: -18, scale: 0.90, rotY: 2.7},
 ];
 
-// Load HQ trees (2K textures, normal maps, 746K verts each)
+// Load HQ trees
 {
   const url = b64Blob('treedata_hq');
   if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url); const base = gltf.scene;
@@ -568,7 +566,7 @@ const ORIG_PLACEMENTS = [
   else checkReady();
 }
 
-// Load original trees (1K textures, 291K verts each — lighter, for depth)
+// Load original trees (depth fill)
 {
   const url = b64Blob('treedata');
   if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url); const base = gltf.scene;
