@@ -89,7 +89,7 @@ document.body.appendChild(renderer.domElement);
 // ═══════════════════════════════════════════════════════
 const contentScene = new THREE.Scene();
 
-const CUBE_SIZE = 3072;
+const CUBE_SIZE = 2048;
 const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_SIZE, {
   generateMipmaps: true,
   minFilter: THREE.LinearMipmapLinearFilter,
@@ -555,22 +555,9 @@ const ORIG_PLACEMENTS = [
   {x: -11, z:   3, scale: 0.76, rotY: 4.4},
 ];
 
-// Load HQ trees
+// Load HQ trees — DISABLED for GPU memory test, skip directly to checkReady
 {
-  const url = b64Blob('treedata_hq');
-  if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url); const base = gltf.scene;
-    const h = new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3()).y;
-    const bs = 8 / h;
-    for(const pl of HQ_PLACEMENTS){
-      const t = base.clone(); const s = bs * pl.scale; t.scale.set(s, s, s);
-      t.position.set(pl.x, -0.3, pl.z); t.rotation.y = pl.rotY;
-      t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
-      contentScene.add(t); treeInstances.push(t);
-    }
-    console.log('HQ Trees: ' + HQ_PLACEMENTS.length + ', height: ' + h.toFixed(1) + ' -> 8m');
-    checkReady();
-  }, undefined, (e) => { console.error('HQ Tree err:', e); checkReady(); });
-  else checkReady();
+  checkReady();
 }
 
 // Load original trees (depth fill)
