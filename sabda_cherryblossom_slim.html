@@ -537,7 +537,11 @@ const HQ_PLACEMENTS = [
 
 // Original trees: 10 filling depth around full 360°
 const ORIG_PLACEMENTS = [
-  // Close ring (10-12m) — 8 trees
+  // ENTRANCE FRAME — 2 trees close to viewer, framing the first view
+  // These are the first thing people see when they walk in
+  {x: -7, z:  0, scale: 0.95, rotY: 2.4},   // left of center, immediate presence
+  {x:  7, z: -1, scale: 0.92, rotY: 5.1},   // right of center, slightly offset
+  // Close ring (10-12m) — 8 trees surrounding
   {x:  10, z:  -7, scale: 0.90, rotY: 2.1},
   {x: -10, z:   8, scale: 0.85, rotY: 3.2},
   {x:  5,  z: -12, scale: 0.88, rotY: 0.5},
@@ -546,7 +550,7 @@ const ORIG_PLACEMENTS = [
   {x:  9,  z:   2, scale: 0.82, rotY: 1.5},
   {x:  2,  z: -10, scale: 0.86, rotY: 5.8},
   {x: -2,  z:  10, scale: 0.88, rotY: 0.8},
-  // Mid ring (15-18m) — 6 trees
+  // Mid ring (15-18m) — 6 trees for depth
   {x: -11, z: -15, scale: 0.85, rotY: 0.3},
   {x:  11, z:  16, scale: 0.80, rotY: 3.6},
   {x:  7,  z: -18, scale: 0.78, rotY: 5.2},
@@ -568,7 +572,7 @@ const ORIG_PLACEMENTS = [
     const bs = 8 / h;
     for(const pl of ORIG_PLACEMENTS){
       const t = base.clone(); const s = bs * pl.scale; t.scale.set(s, s, s);
-      t.position.set(pl.x, -0.3, pl.z); t.rotation.y = pl.rotY;
+      t.position.set(pl.x, -0.15, pl.z); t.rotation.y = pl.rotY;
       t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
       contentScene.add(t); treeInstances.push(t);
     }
