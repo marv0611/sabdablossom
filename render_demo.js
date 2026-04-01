@@ -67,18 +67,32 @@ async function renderFrames() {
   // Set puppeteer flag BEFORE loading
   await page.evaluateOnNewDocument(() => { window.__SABDA_PUPPETEER__ = true; });
   
-  await page.goto('file://' + HTML_FILE, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  
-  // Listen for console messages to debug loading
+  // Listen for console messages BEFORE page load
   page.on('console', msg => {
     const text = msg.text();
-    if (text.includes('SABDA') || text.includes('err') || text.includes('Tree') || text.includes('loaded'))
+    if (text.includes('SABDA') || text.includes('err') || text.includes('Tree') || text.includes('loaded') || text.includes('Rabbit'))
       console.log('  [page]', text);
   });
+  page.on('pageerror', err => console.log('  [ERROR]', err.message));
   
-  // Wait for scene to be ready — 120s timeout (large assets take time)
+  await page.goto('file://' + HTML_FILE, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  
+  // Wait for assets — with fallback
   console.log('Waiting for assets to load...');
-  await page.waitForFunction('window.SABDA_READY === true', { timeout: 120000 });
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const ready = await page.evaluate(() => window.SABDA_READY);
+    if (ready) break;
+    if (i % 5 === 4) {
+      const count = await page.evaluate(() => typeof readyCount !== 'undefined' ? readyCount : '?');
+      console.log(`  Still waiting... readyCount=${count}/4 (${i+1}s)`);
+    }
+  }
+  const ready = await page.evaluate(() => window.SABDA_READY);
+  if (!ready) {
+    console.log('  Forcing ready after 60s timeout');
+    await page.evaluate(() => { window.SABDA_READY = true; });
+  }
   console.log('Scene ready. Rendering...\n');
 
   const startTime = Date.now();
