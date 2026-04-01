@@ -42,7 +42,6 @@ canvas{position:absolute;top:0;left:0}
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -518,9 +517,6 @@ contentScene.add(godRayGroup);
 // GLB LOADING
 // ═══════════════════════════════════════════════════════
 const gltfLoader = new GLTFLoader();
-const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('https://unpkg.com/three@0.162.0/examples/jsm/libs/draco/');
-gltfLoader.setDRACOLoader(dracoLoader);
 let readyCount = 0;
 const TOTAL_ASSETS = 4;
 function checkReady() {
