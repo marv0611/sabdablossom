@@ -89,7 +89,7 @@ document.body.appendChild(renderer.domElement);
 // ═══════════════════════════════════════════════════════
 const contentScene = new THREE.Scene();
 
-const CUBE_SIZE = 3072;
+const CUBE_SIZE = 4096;
 const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_SIZE, {
   generateMipmaps: true,
   minFilter: THREE.LinearMipmapLinearFilter,
@@ -147,22 +147,22 @@ function makeEquirectMat(azStartFrac, azEndFrac) {
         vec3 dir = vec3(sin(azimuth) * ce, sin(elevation), -cos(azimuth) * ce);
         vec4 col = textureCube(tCube, dir);
 
-        // ── PROJECTION OPTIMIZATION (cherry blossom — softer than murmuration) ──
-        // 1. Black floor lift
-        col.rgb = col.rgb * 0.97 + 0.015;
-        // 2. S-curve contrast — gentle for soft dreamy feel
+        // ── PROJECTION OPTIMIZATION (matched to murmuration template) ──
+        // 1. Black floor lift (2%)
+        col.rgb = col.rgb * 0.96 + 0.02;
+        // 2. S-curve contrast (45%)
         vec3 scurve = col.rgb * col.rgb * (3.0 - 2.0 * col.rgb);
-        col.rgb = mix(col.rgb, scurve, 0.65);
-        // 3. Saturation — warm pink emphasis
+        col.rgb = mix(col.rgb, scurve, 0.45);
+        // 3. Saturation boost (30%)
         float luma = dot(col.rgb, vec3(0.299, 0.587, 0.114));
-        col.rgb = mix(vec3(luma), col.rgb, 0.95);
-        // 4. Highlight ceiling — soft
-        col.rgb = min(col.rgb, 0.88 + (col.rgb - 0.88) * 0.3);
-        // 5. Vertical edge blend
+        col.rgb = mix(vec3(luma), col.rgb, 1.30);
+        // 4. Highlight ceiling
+        col.rgb = min(col.rgb, 0.90 + (col.rgb - 0.90) * 0.4);
+        // 5. Vertical edge vignette
         float topBottomFade = smoothstep(0.0, 0.02, vUv.y) * smoothstep(1.0, 0.98, vUv.y);
         col.rgb *= topBottomFade * 0.05 + 0.95;
 
-        col.rgb += dither(gl_FragCoord.xy) / 255.0;
+        col.rgb += dither(gl_FragCoord.xy) * 1.5 / 255.0;
         gl_FragColor = col;
       }
     `,
@@ -233,7 +233,7 @@ function makeRoomWallMat(azStartFrac, azEndFrac) {
         vec3 scurve = col.rgb * col.rgb * (3.0 - 2.0 * col.rgb);
         col.rgb = mix(col.rgb, scurve, 0.45);
         float luma = dot(col.rgb, vec3(0.299, 0.587, 0.114));
-        col.rgb = mix(vec3(luma), col.rgb, 0.95);
+        col.rgb = mix(vec3(luma), col.rgb, 1.30);
         col.rgb = min(col.rgb, 0.90 + (col.rgb - 0.90) * 0.4);
         float topBottomFade = smoothstep(0.0, 0.02, vUv.y) * smoothstep(1.0, 0.98, vUv.y);
         col.rgb *= topBottomFade * 0.05 + 0.95;
@@ -458,7 +458,7 @@ const skySphereMat = new THREE.ShaderMaterial({
     void main(){
       vec3 col = mix(texture2D(texA,vUv).rgb, texture2D(texB,vUv).rgb, mixVal) * tintColor;
       float luma = dot(col, vec3(0.299,0.587,0.114));
-      col = mix(vec3(luma), col, 0.95);
+      col = mix(vec3(luma), col, 1.15);
       col = (col-0.5)*0.95+0.5;
       col = min(col, vec3(0.88));
       // Fade lower hemisphere to fog
