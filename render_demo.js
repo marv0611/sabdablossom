@@ -18,10 +18,10 @@ const fs = require('fs');
 
 // ── CONFIG ──
 const FPS = 30;
-const DEMO_DURATION = 120; // 2 minutes
+const DEMO_DURATION = 30; // 30 seconds
 const TOTAL_FRAMES = DEMO_DURATION * FPS; // 3600 frames
 const FRAME_STEP = 1 / FPS;
-const CRF = '16';
+const CRF = '10';
 
 const HTML_FILE = path.resolve(__dirname, 'sabda_cherryblossom_full.html');
 const OUTPUT_DIR = path.resolve(__dirname, 'output');
