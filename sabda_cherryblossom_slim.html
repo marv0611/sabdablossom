@@ -559,11 +559,31 @@ const ORIG_PLACEMENTS = [
   {x: -11, z:   3, scale: 0.76, rotY: 4.4},
 ];
 
-// HQ tree — temporarily disabled for cache test
+// Load HQ trees — with simplified materials (texture-free test)
 {
   const url = b64Blob('treedata_hq');
-  // Skip loading, just checkReady
-  checkReady();
+  if (url) gltfLoader.load(url, (gltf) => { URL.revokeObjectURL(url); const base = gltf.scene;
+    const h = new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3()).y;
+    const bs = 8 / h;
+    // Replace all materials with simple ones to test if textures cause the crash
+    const barkMat = new THREE.MeshStandardMaterial({color: 0x5a3a2a, roughness: 0.9});
+    const flowerMat = new THREE.MeshStandardMaterial({color: 0xf0b0c0, roughness: 0.6, transparent: true, alphaTest: 0.5});
+    base.traverse(c => {
+      if (c.isMesh) {
+        if (c.material && c.material.name === 'Tree_Mlt') c.material = barkMat;
+        else if (c.material) c.material = flowerMat;
+      }
+    });
+    for(const pl of HQ_PLACEMENTS){
+      const t = base.clone(); const s = bs * pl.scale; t.scale.set(s, s, s);
+      t.position.set(pl.x, -0.15, pl.z); t.rotation.y = pl.rotY;
+      t.traverse(c => { if(c.isMesh){ c.castShadow = false; c.receiveShadow = false; }});
+      contentScene.add(t); treeInstances.push(t);
+    }
+    console.log('HQ Trees: ' + HQ_PLACEMENTS.length + ' (simplified materials)');
+    checkReady();
+  }, undefined, (e) => { console.error('HQ Tree err:', e); checkReady(); });
+  else checkReady();
 }
 
 // Load original trees (depth fill)
