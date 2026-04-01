@@ -53,8 +53,9 @@ for (const w of WALLS) {
 async function renderFrames() {
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu',
-           '--use-gl=swiftshader', '--window-size=7000,2500'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox',
+           '--use-gl=angle', '--use-angle=metal',
+           '--enable-webgl', '--ignore-gpu-blocklist'],
   });
   const page = await browser.newPage();
   
