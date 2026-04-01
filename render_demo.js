@@ -63,13 +63,22 @@ async function renderFrames() {
 
   // Load HTML
   console.log('Loading scene...');
+  
+  // Set puppeteer flag BEFORE loading
+  await page.evaluateOnNewDocument(() => { window.__SABDA_PUPPETEER__ = true; });
+  
   await page.goto('file://' + HTML_FILE, { waitUntil: 'domcontentloaded', timeout: 120000 });
   
-  // Set puppeteer flag
-  await page.evaluate(() => { window.__SABDA_PUPPETEER__ = true; });
+  // Listen for console messages to debug loading
+  page.on('console', msg => {
+    const text = msg.text();
+    if (text.includes('SABDA') || text.includes('err') || text.includes('Tree') || text.includes('loaded'))
+      console.log('  [page]', text);
+  });
   
-  // Wait for scene to be ready
-  await page.waitForFunction('window.SABDA_READY === true', { timeout: 60000 });
+  // Wait for scene to be ready — 120s timeout (large assets take time)
+  console.log('Waiting for assets to load...');
+  await page.waitForFunction('window.SABDA_READY === true', { timeout: 120000 });
   console.log('Scene ready. Rendering...\n');
 
   const startTime = Date.now();
