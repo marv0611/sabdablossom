@@ -89,7 +89,7 @@ document.body.appendChild(renderer.domElement);
 // ═══════════════════════════════════════════════════════
 const contentScene = new THREE.Scene();
 
-const CUBE_SIZE = 2048;
+const CUBE_SIZE = 3072;
 const cubeRT = new THREE.WebGLCubeRenderTarget(CUBE_SIZE, {
   generateMipmaps: true,
   minFilter: THREE.LinearMipmapLinearFilter,
@@ -591,16 +591,9 @@ const APL=[
   {x:  2, y:7, z:  10,s:0.8, r:4.2},
   {x: -1, y:4, z:  -3,s:1.3, r:2.0},
 ];
+// Petals disabled — Draco-encoded GLB, needs re-export without Draco
 {
-  const url = b64Blob('animpetaldata');
-  if (url) gltfLoader.load(url,(gltf)=>{URL.revokeObjectURL(url);const base=gltf.scene;const clip=gltf.animations[0];
-    for(let i=0;i<APL.length;i++){const pl=APL[i];const clone=SkeletonUtils.clone(base);
-      clone.position.set(pl.x,pl.y,pl.z);clone.scale.setScalar(pl.s);clone.rotation.y=pl.r;
-      const mixer=new THREE.AnimationMixer(clone);const action=mixer.clipAction(clip);action.play();
-      action.time=(i/APL.length)*clip.duration;contentScene.add(clone);animPetalMixers.push({mixer});}
-    console.log('Petals: '+APL.length);checkReady();
-  },undefined,(e)=>{console.error('Petal err:',e);checkReady();});
-  else checkReady();
+  checkReady();
 }
 
 // ── GROUND PETAL CARPET — REMOVED (photo texture covers floor, saves 130K verts) ──
